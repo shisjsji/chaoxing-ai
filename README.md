@@ -2,7 +2,8 @@
 
 把「刷课 + AI 答题 + 考试作答 + 本地题库」做进一个 Windows 桌面程序里，双击即用，不需要装浏览器插件、不需要懂命令行。
 
-> 基于 [Samueli924/chaoxing](https://github.com/Samueli924/chaoxing) 的命令行能力重做界面与交互，并新增考试作答、共享题库、自动更新。协议为 **GPL-3.0**。
+**官网与下载**：<https://chaoxingxxt.lingluandf.online>
+**问题反馈**：[Issues](https://github.com/shisjsji/chaoxing-ai/issues) · **更新日志**：[CHANGELOG.md](CHANGELOG.md)
 
 ---
 
@@ -125,7 +126,7 @@ main.py               刷课主流程（子进程运行）
 
 webui/server.py       Flask 后端：配置、进程管理、日志回传、考试编排
 webui/templates/      单页界面
-api/base.py           学习通协议核心（上游代码）
+api/base.py           学习通协议核心
 api/answer.py         题库与 AI 答题调度
 api/exam.py           考试协议与模型调用
 api/browser_exam.py   浏览器驱动的考试作答（Beta）
@@ -191,22 +192,24 @@ tests/                单元测试
 
 **GNU General Public License v3.0** —— 见 [LICENSE](LICENSE)。
 
-这是一个派生作品，上游是 [Samueli924/chaoxing](https://github.com/Samueli924/chaoxing)（GPL-3.0）。按 GPL-3.0 的要求：
+Copyright © 2026 shisjsji
 
-- 你可以自由使用、修改、分发
-- 分发修改版时必须同样以 GPL-3.0 开源，并保留原始版权声明
+你可以自由使用、修改、分发。按 GPL-3.0 的要求：
+
+- 分发修改版时必须同样以 GPL-3.0 开源
 - 不提供任何担保
 
-**致谢**：
+**用到的开源组件**：
 
-- [Samueli924/chaoxing](https://github.com/Samueli924/chaoxing) —— 学习通协议实现的基础
-- [sml2h3/ddddocr](https://github.com/sml2h3/ddddocr) —— 验证码识别
-- 以及所有提交过 PR 的贡献者
+- [ddddocr](https://github.com/sml2h3/ddddocr) —— 验证码识别
+- [Flask](https://flask.palletsprojects.com/)、[pywebview](https://pywebview.flowrl.com/)、[Pillow](https://python-pillow.org/)、[BeautifulSoup](https://www.crummy.com/software/BeautifulSoup/)
+- 以及所有提交过 Issue 与 PR 的贡献者
 
 ---
 
 ## 联系
 
+- 官网：<https://chaoxingxxt.lingluandf.online>
 - GitHub：[@shisjsji](https://github.com/shisjsji)
 - 博客：<https://lingluandf.online>
 - 酷安：30432128

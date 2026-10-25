@@ -3,7 +3,7 @@
 开发环境：.venv\\Scripts\\python.exe run_webui.py
 打包后：双击 chaoxing-ai.exe
 
-带 --run-task 参数时进入任务子进程模式（供控制台内部调用，跑原项目主流程）。
+带 --run-task 参数时进入任务子进程模式（供控制台内部调用，跑刷课主流程）。
 """
 
 import os
