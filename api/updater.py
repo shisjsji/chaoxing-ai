@@ -9,6 +9,7 @@
 """
 
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -21,7 +22,7 @@ import requests
 
 from api.logger import logger
 
-APP_VERSION = "3.7.6"
+APP_VERSION = "3.7.11"
 APP_NAME = "超星AI答题"
 
 CHECK_TIMEOUT = 8
@@ -32,12 +33,53 @@ REQUIRED_ENTRIES = ("_internal/python312.dll", "_internal/base_library.zip")
 # 更新失败时写在程序目录里的说明文件，下次启动由界面读出来提示
 FAILURE_NOTE = "update_failed.txt"
 
+PENDING_META = "update_pending.json"
+
 LOG_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.log")
 PS1_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.ps1")
 
 # 内置更新日志：断网时也能在界面里看到本版改了什么。
 # 新增版本时同步更新 CHANGELOG.md 与服务端 version.json 的 highlights。
 RELEASES = {
+    "3.7.11": [
+        "装了旧版时安装程序会明确告诉你「这是覆盖安装」，本地账号、题库、配置都会保留，位置也自动填好",
+        "安装目录里多了独立的「卸载.exe」，卸载时可以选择保留本地资料，或连账号和题库一起删掉",
+        "控制面板的卸载入口换成新卸载器，也支持静默卸载（默认保留资料）",
+        "安装不再把 200MB 的安装包复制一份当卸载程序，每个安装目录省下约 175MB",
+        "热更新会顺手把卸载入口也换成新版，不用为了它重装一次",
+    ],
+    "3.7.10": [
+        "修复热更新从来没真正执行过：更新脚本被以无控制台分离进程拉起，PowerShell 直接静默退出",
+        "修复「立即重启」按钮点不动：重启函数放错作用域，点击报错又被吞掉，界面毫无反应",
+        "更新出错不再静默：原因直接显示在进度行，界面任何 JS 异常也会提示出来",
+        "更新时程序自己正常退出，不再被强制结束；替换完成后没有 WebView2 残留进程",
+        "WebView2 改用固定配置目录：不再往系统临时目录堆残留（此前每次启动一份，已积累数百 MB）",
+        "考场窗口的登录状态能保留，下次进考场不用重新登录",
+    ],
+    "3.7.9": [
+        "修复刷课被 403 跳过任务点：去掉「一次报满进度」的瞬间完成尝试，改为按真实节奏推进",
+        "进度上报不再携带拖动标记（isdrag 从 4 改为 0），降低被判定刷课的概率",
+        "任务时长异常时明确跳过，不会卡死在循环里",
+        "修复考试回不到第 1 题就整轮放弃：答题卡点不动时改用「上一题」逐步退回",
+        "断掉错误传播：页面上已有的答案不再写进题库（可能是旧版本错位留下的错答案）",
+        "考试只复用「已确认」的答案，待验证的当场重新问模型",
+    ],
+    "3.7.8": [
+        "更新不再卡在界面上：下载转到后台，弹窗里实时显示进度条和已下载大小",
+        "下载带超时（连接 15 秒、读取 60 秒），网络卡住会明确失败而不是无限等",
+        "下载不完整、校验不通过、包结构异常都会给出具体原因，可直接重试",
+        "下载完成后不自动重启，按钮变成「立即重启」，点它才安装",
+        "已下载的包会记录下来：关掉程序下次打开仍提示「立即重启」，不用重下 190MB",
+        "更新过程中重复点击会被拒绝，失败一律保留当前版本",
+    ],
+    "3.7.7": [
+        "修复考试跳着作答：改为从第 1 题顺序翻页到卷尾，答完一题再进下一题",
+        "修复读错题、答案点错位：翻页后必须等题号真的变了才继续，不再拿旧题当新题",
+        "修复答题卡题号跳不过去：不再依赖面板点击，顺带解决了懒加载查不到题号的问题",
+        "新增「反馈」按钮：一句话描述问题，可选择附带最近日志一键发送",
+        "关键错误自动上报到服务器（只带版本、模块和错误摘要，不含账号与题目原文）",
+        "更新弹窗每次启动都提示，并说明更新方式和数据保留情况",
+    ],
     "3.7.6": [
         "修复窄窗口下日志面板完全不可见：改成右侧抽屉，点「日志」就能拉出来",
         "修复课程列表为空会刷全部课程：现在会明确问你确认",
@@ -176,6 +218,43 @@ def _version_tuple(text: str) -> tuple:
     return tuple(parts)
 
 
+def save_pending(zip_path: str, version: str, sha256: str) -> None:
+    """记下已下载待安装的更新包，程序重启后还能接着装。"""
+    meta = {
+        "zip": os.path.abspath(zip_path),
+        "version": version,
+        "sha256": sha256,
+        "at": time.time(),
+    }
+    try:
+        with open(os.path.join(base_dir(), PENDING_META), "w", encoding="utf-8") as fp:
+            json.dump(meta, fp, ensure_ascii=False)
+    except OSError as exc:
+        logger.warning(f"未能记录待安装更新: {exc}")
+
+
+def load_pending() -> dict:
+    """读取待安装记录。包已被清理就返回空，避免指向不存在的文件。"""
+    path = os.path.join(base_dir(), PENDING_META)
+    try:
+        with open(path, "r", encoding="utf-8") as fp:
+            meta = json.load(fp)
+    except (OSError, ValueError):
+        return {}
+    zip_path = meta.get("zip", "")
+    if not zip_path or not os.path.exists(zip_path):
+        clear_pending()
+        return {}
+    return meta
+
+
+def clear_pending() -> None:
+    try:
+        os.remove(os.path.join(base_dir(), PENDING_META))
+    except OSError:
+        pass
+
+
 def inspect_package(path: str) -> list:
     """检查更新包结构，返回问题列表；空列表表示可用。"""
     problems = []
@@ -194,7 +273,11 @@ def inspect_package(path: str) -> list:
 
 
 def download(url: str, sha256: str = "", progress=None) -> str:
-    """下载更新包到临时目录，校验后返回路径。失败抛异常。"""
+    """下载更新包到临时目录，校验后返回路径。失败抛异常。
+
+    progress(done, total) 每 256 KB 回调一次，total 取不到时为 0。
+    连接 15 秒、读取 60 秒超时：网络卡住会明确失败，而不是无限挂着。
+    """
     if not url:
         raise ValueError("缺少下载地址")
     target = os.path.join(tempfile.gettempdir(), "chaoxing_update.zip")
@@ -204,18 +287,37 @@ def download(url: str, sha256: str = "", progress=None) -> str:
         raise ValueError(f"系统盘剩余空间不足（{free // 1024 // 1024} MB），无法下载更新包")
 
     digest = hashlib.sha256()
-    total = 0
-    with requests.get(url, stream=True, timeout=60) as resp:
-        resp.raise_for_status()
-        with open(target, "wb") as fp:
-            for chunk in resp.iter_content(1024 * 256):
-                if not chunk:
-                    continue
-                fp.write(chunk)
-                digest.update(chunk)
-                total += len(chunk)
-                if progress and total % (1024 * 1024) < 1024 * 256:
-                    progress(total)
+    done_bytes = 0
+    total_bytes = 0
+    try:
+        with requests.get(url, stream=True, timeout=(15, 60)) as resp:
+            resp.raise_for_status()
+            total_bytes = int(resp.headers.get("Content-Length") or 0)
+            with open(target, "wb") as fp:
+                for chunk in resp.iter_content(1024 * 256):
+                    if not chunk:
+                        continue
+                    fp.write(chunk)
+                    digest.update(chunk)
+                    done_bytes += len(chunk)
+                    if progress:
+                        try:
+                            progress(done_bytes, total_bytes)
+                        except Exception:
+                            pass
+    except Exception:
+        try:
+            os.remove(target)
+        except OSError:
+            pass
+        raise
+
+    if total_bytes and done_bytes < total_bytes:
+        try:
+            os.remove(target)
+        except OSError:
+            pass
+        raise ValueError(f"下载不完整（{done_bytes // 1024} KB / {total_bytes // 1024} KB）")
 
     if sha256 and digest.hexdigest().lower() != sha256.lower():
         try:
@@ -232,7 +334,7 @@ def download(url: str, sha256: str = "", progress=None) -> str:
             pass
         raise ValueError("更新包不完整：" + "；".join(problems))
 
-    logger.info(f"更新包已下载并通过校验: {target} ({total // 1024} KB)")
+    logger.info(f"更新包已下载并通过校验: {target} ({done_bytes // 1024} KB)")
     return target
 
 
@@ -246,6 +348,8 @@ def _build_script(zip_path: str, app_dir: str, exe_name: str) -> str:
     zip_q = _ps_quote(zip_path)
     exe = _ps_quote(exe_name)
     note = _ps_quote(FAILURE_NOTE)
+    meta = _ps_quote(PENDING_META)
+    meta_legacy = _ps_quote("uninstall.exe")
     log = _ps_quote(LOG_PATH)
     process = _ps_quote(os.path.splitext(exe_name)[0])
 
@@ -308,10 +412,34 @@ try {{
     }}
     Note '文件已替换'
 
+    # 4b) 同步卸载入口：新包里有 卸载.exe 就换上，并把「已安装的应用」指过去。
+    #     这一步失败不影响程序本身可用，所以单独兜住。
+    $newUn = Join-Path $tmp '卸载.exe'
+    if (Test-Path -LiteralPath $newUn) {{
+        try {{
+            Copy-Item -LiteralPath $newUn -Destination (Join-Path $app '卸载.exe') -Force
+            $key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\超星AI答题'
+            if (Test-Path -LiteralPath $key) {{
+                $unPath = '"' + (Join-Path $app '卸载.exe') + '"'
+                Set-ItemProperty -LiteralPath $key -Name 'UninstallString' -Value $unPath
+                Set-ItemProperty -LiteralPath $key -Name 'QuietUninstallString' -Value ($unPath + ' --silent')
+            }}
+            # 旧版把 200MB 的安装器复制成了 uninstall.exe，换成新卸载器后就没用了
+            $legacy = Join-Path $app '{meta_legacy}'
+            if (Test-Path -LiteralPath $legacy) {{ Remove-Item -LiteralPath $legacy -Force -ErrorAction SilentlyContinue }}
+            Note '卸载入口已更新'
+        }} catch {{
+            Note "卸载入口更新失败: $_"
+        }}
+    }}
+
     # 5) 清理并重启
     Remove-Item -LiteralPath $old -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $note) {{ Remove-Item -LiteralPath $note -Force -ErrorAction SilentlyContinue }}
+    # 装完清掉「待安装」标记，免得下次启动重复提示
+    $meta = Join-Path $app '{meta}'
+    if (Test-Path -LiteralPath $meta) {{ Remove-Item -LiteralPath $meta -Force -ErrorAction SilentlyContinue }}
     Note '更新成功，重新启动'
     Start-Process -FilePath $exePath -WorkingDirectory $app
     Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
@@ -357,11 +485,14 @@ def apply_and_restart(zip_path: str) -> bool:
     except OSError:
         pass
 
+    # CREATE_NO_WINDOW 不能换成 DETACHED_PROCESS：打包后的程序是没有控制台的
+    # 窗口进程，用 DETACHED_PROCESS 拉起的 powershell 会立刻静默退出，
+    # 更新脚本一个字节都不会执行（历史上整条热更新因此从未真正跑起来）。
     subprocess.Popen(
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
          "-WindowStyle", "Hidden", "-File", PS1_PATH],
         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        | getattr(subprocess, "DETACHED_PROCESS", 0),
+        | getattr(subprocess, "CREATE_NO_WINDOW", 0),
         close_fds=True,
     )
     logger.info("已启动更新脚本，程序即将退出并重启")

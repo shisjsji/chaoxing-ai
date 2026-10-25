@@ -31,6 +31,10 @@ DAILY_LIMIT = int(os.environ.get("LIB_DAILY_LIMIT", "2000"))
 GLOBAL_DAILY_LIMIT = int(os.environ.get("LIB_GLOBAL_DAILY_LIMIT", "20000"))
 # 同一道题最多累计多少条提交，超过就不再接受，防止单题被灌票
 PER_QUESTION_CAP = int(os.environ.get("LIB_PER_QUESTION_CAP", "20"))
+# 反馈/日志上报：每台设备每天上限，防止有人拿它刷库
+FEEDBACK_DAILY_LIMIT = int(os.environ.get("LIB_FEEDBACK_DAILY_LIMIT", "300"))
+# 作者查看上报内容的独立令牌；不配置就不开放这个接口
+ADMIN_TOKEN = os.environ.get("LIB_ADMIN_TOKEN", "")
 
 app = Flask(__name__)
 _lock = threading.Lock()
@@ -54,6 +58,18 @@ CREATE TABLE IF NOT EXISTS submissions (
     confidence  TEXT DEFAULT 'medium',
     created_at  REAL
 );
+CREATE TABLE IF NOT EXISTS feedback (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind        TEXT DEFAULT 'log',
+    version     TEXT DEFAULT '',
+    module      TEXT DEFAULT '',
+    message     TEXT DEFAULT '',
+    context     TEXT DEFAULT '',
+    device      TEXT DEFAULT '',
+    created_at  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_fb_created ON feedback(created_at);
+CREATE INDEX IF NOT EXISTS idx_fb_device ON feedback(device, created_at);
 CREATE INDEX IF NOT EXISTS idx_sub_user ON submissions(user_hash, created_at);
 CREATE INDEX IF NOT EXISTS idx_sub_fp ON submissions(fingerprint);
 """
@@ -215,6 +231,72 @@ def stats():
         finally:
             conn.close()
     return jsonify(ok=True, total=total, usable=usable, disputed=disputed)
+
+
+@app.post("/api/v1/feedback")
+def submit_feedback():
+    """接收客户端的日志、报错和使用反馈。"""
+    if not _authorized():
+        return jsonify(ok=False, error="unauthorized"), 401
+
+    payload = request.get_json(silent=True) or {}
+    kind = str(payload.get("kind", "log"))[:20]
+    version = str(payload.get("version", ""))[:32]
+    module = str(payload.get("module", ""))[:40]
+    message = str(payload.get("message", ""))[:4000]
+    context = str(payload.get("context", ""))[:4000]
+    device = str(payload.get("device", ""))[:40]
+    if not message and not context:
+        return jsonify(ok=False, error="empty"), 400
+
+    now = time.time()
+    with _lock:
+        conn = _conn()
+        try:
+            used = conn.execute(
+                "SELECT COUNT(*) FROM feedback WHERE device=? AND created_at>?",
+                (device, now - 86400)).fetchone()[0]
+            if used >= FEEDBACK_DAILY_LIMIT:
+                return jsonify(ok=False, error="今日上报次数已达上限"), 429
+            conn.execute(
+                "INSERT INTO feedback(kind,version,module,message,context,device,created_at) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (kind, version, module, message, context, device, now))
+            conn.commit()
+        finally:
+            conn.close()
+    return jsonify(ok=True)
+
+
+@app.get("/api/v1/feedback")
+def list_feedback():
+    """作者查看上报内容。需要独立的管理令牌，普通客户端令牌看不了。"""
+    if not ADMIN_TOKEN or request.headers.get("X-Admin-Token", "") != ADMIN_TOKEN:
+        return jsonify(ok=False, error="unauthorized"), 401
+    try:
+        limit = min(200, max(1, int(request.args.get("limit", "50"))))
+    except ValueError:
+        limit = 50
+    kind = request.args.get("kind", "").strip()
+    sql = "SELECT id,kind,version,module,message,context,device,created_at FROM feedback"
+    params = []
+    if kind:
+        sql += " WHERE kind=?"
+        params.append(kind)
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    with _lock:
+        conn = _conn()
+        try:
+            rows = conn.execute(sql, params).fetchall()
+            total = conn.execute("SELECT COUNT(*) FROM feedback").fetchone()[0]
+        finally:
+            conn.close()
+    return jsonify(ok=True, total=total, items=[
+        {"id": r[0], "kind": r[1], "version": r[2], "module": r[3],
+         "message": r[4], "context": r[5], "device": r[6],
+         "at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r[7]))}
+        for r in rows])
 
 
 @app.get("/api/v1/latest")

@@ -170,6 +170,7 @@ secret.dat
 # 打包配置要保留（*.spec 是 PyInstaller 默认产物，但这两个是手写的）
 !超星AI答题.spec
 !超星AI答题-安装.spec
+!卸载.spec
 
 # 构建产物与发布包，仓库里不放大文件
 release/
@@ -178,3 +179,7 @@ release/
 超星AI答题-安装-*.exe
 超星AI答题-*.zip
 *.exe
+
+# 本地截图与调试脚本
+_shots/
+_*.py

@@ -699,7 +699,7 @@ class Chaoxing:
             _duration,
             _playingTime,
             _type: str = "Video",
-            _isdrag: int = 3,
+            _isdrag: int = 0,
             headers: Optional[dict] = None,
     ) -> tuple[bool, int]:
 
@@ -957,6 +957,10 @@ class Chaoxing:
         # Time in the video (can be scaled with the speed factor): duration, play_time, last_log_time, wait_time
 
         duration = int(_video_info["duration"])
+        if duration <= 0:
+            # 拿不到时长就没法按时长推进，硬跑会死循环
+            logger.error("任务时长异常（{}s），跳过: {}", duration, _job["name"])
+            return StudyResult.ERROR
         play_time = int(_job["playTime"]) // 1000
         last_log_time = 0
         last_iter = time.time()
@@ -967,11 +971,11 @@ class Chaoxing:
         forbidden_retry = 0
         max_forbidden_retry = 2
 
-        passed, state = self.video_progress_log(_session, _course, _job, _job_info, _dtoken, duration, duration,
-                                                _type, headers=headers, _isdrag=4)
-        if passed:
-            logger.info("任务瞬间完成: {}", _job['name'])
-            return StudyResult.SUCCESS
+        # 原来这里会先发一次「当前进度 = 总时长」的请求碰运气（isdrag=4），
+        # 想靠一次上报直接完成任务。平台现在会判定为刷课：返回 403 并弹验证码，
+        # 结果任务点被跳过、等于没刷。改成一律按真实节奏推进。
+        passed = False
+        state = 0
 
         pbar = None
         confirm_deadline = 0.0

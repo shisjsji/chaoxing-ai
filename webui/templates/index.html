@@ -247,8 +247,25 @@
   dialog.update .body{padding:6px 18px 0}
   dialog.update .sub{margin:4px 0 0;font-size:12px;color:var(--c-ink3)}
   dialog.update ul{margin:8px 0 0;padding-left:17px;color:var(--c-ink2);font-size:12.5px;line-height:1.8}
+  dialog.update .upd-block{margin-top:14px}
+  dialog.update .upd-block h4{margin:0;font-size:12px;font-weight:600;color:var(--c-ink)}
+  dialog.update .upd-flow{margin:6px 0 0;padding-left:17px;color:var(--c-ink2);font-size:12px;line-height:1.85}
+  dialog.update .hint{margin-top:8px}
+  .upd-progress{margin-top:14px}
+  .upd-progress[hidden]{display:none}
+  .upd-bar{height:6px;border-radius:3px;background:var(--c-line-soft);overflow:hidden}
+  .upd-bar i{display:block;height:100%;width:0;background:var(--c-primary);
+    transition:width 220ms ease}
+  .upd-stage{margin:8px 0 0;font-size:12px;color:var(--c-ink2);line-height:1.6}
+  .upd-stage.err{color:var(--c-danger)}
   dialog.update li{margin:2px 0}
   dialog.update .foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px 16px}
+  dialog.update textarea{
+    width:100%;margin-top:10px;padding:8px 10px;border:1px solid var(--c-line);
+    border-radius:var(--r-sm);background:var(--c-surface);color:var(--c-ink);
+    font:12.5px/1.6 inherit;resize:vertical;
+  }
+  dialog.update textarea:focus{outline:2px solid var(--c-primary);outline-offset:-1px}
 
   /* 人脸提示 */
   .notice{
@@ -321,6 +338,7 @@
       <button class="btn primary" id="btnStart">开始运行<kbd>Ctrl+↵</kbd></button>
       <button class="btn" id="btnStop" disabled title="没有正在运行的任务">停止</button>
       <button class="btn" id="btnLogs" title="显示/隐藏日志面板">日志</button>
+      <button class="btn" id="btnFeedback" title="遇到问题？把情况发给我">反馈</button>
     </header>
 
     <div class="content">
@@ -482,11 +500,46 @@
   </aside>
 </div>
 
+<dialog class="update" id="feedback-dialog">
+  <h2>反馈问题</h2>
+  <div class="body">
+    <p class="sub">会带上版本号和系统信息，方便我复现。</p>
+    <textarea id="feedback-text" rows="5"
+      placeholder="哪一步出的问题？卡住、报错、答错、还是界面显示不对"></textarea>
+    <label class="check" style="margin-top:10px">
+      <input type="checkbox" id="feedback-logs" checked>
+      附带最近 100 行日志（日志里可能包含题目内容）
+    </label>
+  </div>
+  <div class="foot">
+    <button class="btn" id="feedback-cancel">取消</button>
+    <button class="btn primary" id="feedback-send">发送</button>
+  </div>
+</dialog>
+
 <dialog class="update" id="update-dialog">
   <h2 id="update-title">发现新版本</h2>
   <div class="body">
     <p class="sub" id="update-sub"></p>
-    <ul id="update-list"></ul>
+    <div class="upd-block">
+      <h4>本次更新内容</h4>
+      <ul id="update-list"></ul>
+    </div>
+    <div class="upd-block">
+      <h4>更新方式</h4>
+      <ol class="upd-flow">
+        <li>下载更新包（约 190 MB）</li>
+        <li>校验文件完整性，不通过就放弃，不碰现有文件</li>
+        <li>解压到临时目录，检查必需文件齐全</li>
+        <li>程序退出后替换文件，失败自动回滚到当前版本</li>
+        <li>自动重新启动</li>
+      </ol>
+      <p class="hint">配置、题库、登录状态和已答的题都会保留，不会重装。</p>
+    </div>
+    <div class="upd-progress" id="upd-progress" hidden>
+      <div class="upd-bar"><i id="upd-bar-fill"></i></div>
+      <p class="upd-stage" id="upd-stage"></p>
+    </div>
   </div>
   <div class="foot">
     <button class="btn" id="update-later">稍后</button>
@@ -1084,6 +1137,37 @@ function startExamPolling() {
   }, 1500);
 }
 
+$('btnFeedback').onclick = () => {
+  $('feedback-dialog').showModal();
+};
+$('feedback-cancel').onclick = () => $('feedback-dialog').close();
+$('feedback-send').onclick = async () => {
+  const text = $('feedback-text').value.trim();
+  if (!text) { setMsg('先写点内容再发', 'err'); return; }
+  const btn = $('feedback-send');
+  btn.disabled = true;
+  btn.textContent = '发送中…';
+  let context = '版本 ' + $('ver-current').textContent;
+  if ($('feedback-logs').checked) {
+    const lines = Array.from($('logs').children).slice(-100)
+      .map(el => el.textContent);
+    if (lines.length) context += '\n\n--- 最近日志 ---\n' + lines.join('\n');
+  }
+  try {
+    const r = await post('/api/feedback/push', {
+      kind: 'feedback', module: 'ui', message: text, context: context
+    });
+    $('feedback-dialog').close();
+    $('feedback-text').value = '';
+    setMsg(r.message || '已发送', 'ok');
+  } catch (e) {
+    setMsg('发送失败：' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '发送';
+  }
+};
+
 $('btnExamRefresh').onclick = loadExams;
 $('btnFaceDone').onclick = async () => {
   try {
@@ -1207,14 +1291,81 @@ function fillList(el, items) {
   });
 }
 
+async function syncUpdateState() {
+  try {
+    const d = await fetch('/api/update/progress').then(r => r.json());
+    if (d.stage && d.stage !== 'idle') {
+      renderUpdateProgress(d);
+      if (['downloading', 'verifying', 'preparing', 'restarting'].includes(d.stage)) {
+        startUpdatePolling();
+      }
+    }
+  } catch (e) {}
+}
+
 function showUpdateDialog(d) {
   pendingUpdate = d;
   $('update-title').textContent = '发现新版本 ' + d.version;
-  $('update-sub').textContent = '当前 ' + d.current + '，更新完成后程序会自动重启';
+  $('update-sub').textContent = '当前 ' + d.current + ' → ' + d.version
+    + (d.notes ? '　' + d.notes : '');
   fillList($('update-list'), (d.highlights && d.highlights.length) ? d.highlights : [d.notes || '细节修复与优化']);
   if ($('update-dialog').open) return;
-  sessionStorage.setItem('updateShown', d.version);
   $('update-dialog').showModal();
+  syncUpdateState();
+}
+
+let updateTimer = null;
+
+let updateStage = 'idle';
+
+function renderUpdateProgress(d) {
+  updateStage = d.stage || 'idle';
+  const box = $('upd-progress');
+  if (box) box.hidden = false;
+  const fill = $('upd-bar-fill');
+  if (fill) fill.style.width = Math.max(0, Math.min(100, d.percent || 0)) + '%';
+  const stageEl = $('upd-stage');
+  if (stageEl) {
+    stageEl.textContent = d.message || d.stage || '';
+    stageEl.classList.toggle('err', d.stage === 'error');
+    if (d.stage === 'error' && d.error) stageEl.textContent = '更新失败：' + d.error;
+  }
+
+  // 按钮跟着阶段走：下载完不是自动重启，而是换成「立即重启」等用户点
+  const go = $('update-go'), later = $('update-later');
+  if (!go || !later) return;
+  if (d.stage === 'ready') {
+    go.disabled = false; go.textContent = '立即重启';
+    later.disabled = false; later.textContent = '稍后';
+    stopUpdatePolling();
+  } else if (d.stage === 'restarting') {
+    go.disabled = true; go.textContent = '正在重启…';
+    later.disabled = true;
+  } else if (d.stage === 'done') {
+    go.disabled = true; go.textContent = '已完成';
+    later.disabled = true;
+  } else if (d.stage === 'error') {
+    go.disabled = false; go.textContent = '重试';
+    later.disabled = false; later.textContent = '稍后';
+  }
+}
+
+function stopUpdatePolling() {
+  if (updateTimer) { clearInterval(updateTimer); updateTimer = null; }
+}
+
+function startUpdatePolling() {
+  stopUpdatePolling();
+  updateTimer = setInterval(async () => {
+    try {
+      const d = await fetch('/api/update/progress').then(r => r.json());
+      renderUpdateProgress(d);
+      // 这几种阶段不会再变化，停掉轮询
+      if (['ready', 'error', 'restarting', 'done'].includes(d.stage)) {
+        stopUpdatePolling();
+      }
+    } catch (e) {}
+  }, 600);
 }
 
 async function applyUpdate(source) {
@@ -1223,16 +1374,52 @@ async function applyUpdate(source) {
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = '下载中…';
-  $('update-text').textContent = '正在下载更新包，完成后程序会自动重启…';
-  $('update-bar').hidden = false;
+  $('update-later').disabled = true;
+  renderUpdateProgress({stage: 'downloading', percent: 0, message: '正在连接下载服务器'});
   try {
-    const res = await post('/api/update/apply', {url: pendingUpdate.url, sha256: pendingUpdate.sha256});
-    $('update-text').textContent = res.message;
-    if ($('update-dialog').open) $('update-dialog').close();
+    await post('/api/update/apply', {
+      url: pendingUpdate.url,
+      sha256: pendingUpdate.sha256,
+      version: pendingUpdate.version
+    });
+    startUpdatePolling();
   } catch (e) {
-    $('update-text').textContent = '更新失败：' + e.message + '（已保留当前版本）';
+    renderUpdateProgress({stage: 'error', percent: 0, error: e.message});
     btn.disabled = false;
     btn.textContent = label;
+    $('update-later').disabled = false;
+  }
+}
+
+/* 界面报错必须看得见：以前回调里 catch 完直接吞掉，
+   按钮「点不动」却没有任何提示，只能靠猜 */
+function reportClientError(text) {
+  try { console.error(text); } catch (e) {}
+  if (!$('update-dialog') || !$('update-dialog').open) return;
+  const box = $('upd-progress'), el = $('upd-stage');
+  if (!box || !el) return;
+  box.hidden = false;
+  el.classList.add('err');
+  el.textContent = '界面出错：' + text;
+}
+
+window.addEventListener('error', ev => reportClientError(ev.message || '未知错误'));
+window.addEventListener('unhandledrejection', ev => {
+  const r = ev.reason;
+  reportClientError((r && r.message) ? r.message : String(r));
+});
+
+async function restartUpdate(source) {
+  const btn = $(source);
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '正在重启…'; }
+  renderUpdateProgress({stage: 'restarting', percent: 100,
+    message: '正在退出并安装，几秒后程序会自动重开'});
+  try {
+    await post('/api/update/restart', {});
+  } catch (e) {
+    renderUpdateProgress({stage: 'error', percent: 100, error: e.message});
+    if (btn) { btn.disabled = false; btn.textContent = label; }
   }
 }
 
@@ -1252,7 +1439,6 @@ async function checkUpdateSilently() {
       $('update-bar').hidden = false;
       $('update-now').hidden = true;
       $('update-close').textContent = '知道了';
-      $('update-close').onclick = () => { $('update-bar').hidden = true; };
       return;
     }
     if (!d.ok || !d.has_update) return;
@@ -1261,14 +1447,32 @@ async function checkUpdateSilently() {
     $('update-text').textContent = '发现新版本 ' + d.version;
     $('update-bar').hidden = false;
 
-    // 同一次打开期间已经弹过就不再打扰
-    // 不自动弹模态：只在顶部条提示，用户主动点「立即更新」才展开
+    // 每次打开程序都弹一次，让用户第一时间知道有更新
+    showUpdateDialog(d);
   } catch (e) {}
 }
 
 $('update-close').onclick = () => { $('update-bar').hidden = true; };
 $('update-now').onclick = () => applyUpdate('update-now');
-$('update-go').onclick = () => applyUpdate('update-go');
+$('update-go').onclick = async () => {
+  // 不听前端变量：黑屏或初始化未完成时它可能是旧值，
+  // 会导致「已经下载好了却又下了一遍」。直接问后端现在到底什么状态。
+  let d;
+  try {
+    d = await fetch('/api/update/progress').then(r => r.json());
+  } catch (e) {
+    renderUpdateProgress({stage: 'error', percent: 0, error: '读取更新状态失败：' + e.message});
+    return;
+  }
+  renderUpdateProgress(d);
+  if (d.stage === 'ready') { restartUpdate('update-go'); return; }
+  if (['downloading', 'verifying', 'preparing', 'restarting'].includes(d.stage)) {
+    // 已经在跑了，接着显示进度就行，别重复触发
+    startUpdatePolling();
+    return;
+  }
+  applyUpdate('update-go');
+};
 $('update-later').onclick = () => { $('update-dialog').close(); };
 $('update-dialog').addEventListener('cancel', () => { $('update-dialog').close(); });
 $('btnCheckUpdate').onclick = async () => {
@@ -1335,6 +1539,8 @@ document.addEventListener('keydown', e => {
 
   poll();
   setInterval(poll, 1000);
+  // 上次关程序时可能已经下载好更新包，启动就把它摆出来
+  syncUpdateState();
   setTimeout(checkUpdateSilently, 3000);
   setInterval(checkUpdateSilently, 6 * 3600 * 1000);
 })();

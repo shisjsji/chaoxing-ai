@@ -68,12 +68,24 @@ def tray_image():
     return img
 
 
+LOADING_HTML = """<!doctype html><html><head><meta charset="utf-8">
+<style>
+html,body{height:100%;margin:0;background:#f6f7f9;color:#57606a;
+font:13px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+.wrap{height:100%;display:flex;align-items:center;justify-content:center}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#2563eb;
+margin-right:7px;animation:p 1s ease-in-out infinite}
+@keyframes p{0%,100%{opacity:.25}50%{opacity:1}}
+</style></head><body><div class="wrap">
+<span class="dot"></span>正在启动，请稍候…</div></body></html>"""
+
+
 def launch_window() -> None:
     import webview
 
     window = webview.create_window(
         "超星 AI 答题",
-        URL,
+        html=LOADING_HTML,
         width=1180,
         height=840,
         min_size=(980, 680),
@@ -94,6 +106,19 @@ def launch_window() -> None:
     from webui.server import set_exam_window
 
     set_exam_window(exam)
+
+    # 先显示启动提示，等本地服务真的能响应再加载界面，
+    # 避免 WebView2 冷启动时长时间黑屏
+    def _goto_ui() -> None:
+        if wait_ready(timeout=30):
+            for _ in range(20):
+                try:
+                    window.load_url(URL)
+                    return
+                except Exception:
+                    time.sleep(0.5)
+
+    threading.Thread(target=_goto_ui, daemon=True).start()
 
     state = {"tray": None, "quitting": False}
 
@@ -124,6 +149,14 @@ def launch_window() -> None:
     except Exception:
         pass
 
+    # 更新要重启时由服务端调用，走正常退出（不发 Force 杀）
+    try:
+        from webui.server import set_quit_hook
+
+        set_quit_hook(quit_app)
+    except Exception:
+        pass
+
     def setup_tray() -> None:
         try:
             import pystray
@@ -147,7 +180,17 @@ def launch_window() -> None:
             pass
 
     threading.Thread(target=setup_tray, daemon=True).start()
-    webview.start()
+
+    # 固定 WebView2 配置目录。不给的话 pywebview 默认 private_mode=True，
+    # 每次启动都在 %TEMP% 新建一份配置，等于每次冷启动（实测多等 2.6 秒），
+    # 还会在临时目录里堆下几百 MB 的残留。固定后启动快一半，考场登录态也能留住。
+    storage = os.path.join(
+        os.environ.get("LOCALAPPDATA") or base_dir(), "超星AI答题", "webview"
+    )
+    try:
+        webview.start(private_mode=False, storage_path=storage)
+    except Exception:
+        webview.start()
 
 
 def _open_browser() -> None:

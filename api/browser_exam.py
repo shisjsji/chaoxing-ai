@@ -97,11 +97,70 @@ def clean_title(text: str) -> str:
     return t
 
 
-def _js(win, script: str):
+_EXEC = None
+
+
+def _executor():
+    """跨线程执行 evaluate_js 用；单例复用，避免每次调用都新建线程池。"""
+    global _EXEC
+    if _EXEC is None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        _EXEC = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cx-eval")
+    return _EXEC
+
+
+def _js(win, script: str, timeout: float = 15.0):
+    """执行页面 JS，带超时。
+
+    evaluate_js 是同步调用：页面一旦弹出原生 alert/confirm，JS 主线程被挂起，
+    这个调用就永远不返回，整条答题线程会死在这儿。超时后放弃等待，
+    让流程能继续走并把情况写进日志。
+    """
+    if win is None:
+        return None
     try:
-        return win.evaluate_js(script)
+        future = _executor().submit(win.evaluate_js, script)
+        return future.result(timeout=timeout)
     except Exception:
         return None
+
+
+GUARD_JS = r"""
+(function () {
+  if (window.__cxGuard) return 'already';
+  window.__cxGuard = true;
+  window.__cxDialogs = [];
+  window.alert = function (m) {
+    window.__cxDialogs.push(['alert', String(m)]);
+  };
+  window.confirm = function (m) {
+    window.__cxDialogs.push(['confirm', String(m)]);
+    return true;   // 默认同意：阻塞比误操作更致命，所有弹窗都会写进日志
+  };
+  window.prompt = function (m) {
+    window.__cxDialogs.push(['prompt', String(m)]);
+    return null;
+  };
+  return 'ok';
+})()
+"""
+
+
+def install_guard(win) -> None:
+    """装对话框守卫。页面重载后要重新装，所以每次跳题后都调一次。"""
+    _js(win, GUARD_JS, timeout=5.0)
+
+
+def drain_dialogs(win, log) -> None:
+    """把页面弹过的对话框取出来写进日志，方便判断卡在哪。"""
+    raw = _js(win,
+              "(function(){if(!window.__cxDialogs)return '';"
+              "var d=window.__cxDialogs.splice(0);"
+              "return d.map(function(x){return x[0]+':'+x[1].slice(0,60);}).join(' | ');})()",
+              timeout=5.0)
+    if raw:
+        log(f"  页面弹窗（已自动同意）：{raw}")
 
 
 def wait_js(win, expr: str, timeout: float = 8.0, interval: float = 0.25):
@@ -121,6 +180,76 @@ def wait_js(win, expr: str, timeout: float = 8.0, interval: float = 0.25):
 
 
 QA_READY = "!!document.querySelector('.questionWrap, .questionLi, .questionContent')"
+
+
+def current_qid(win) -> str:
+    """当前页面的题目 ID。用它判断页面是不是真的换了。"""
+    return _js(win, "(function(){var n=document.querySelector(\"input[name='questionId']\");"
+                    "return n?n.value:'';})()", timeout=6.0) or ""
+
+
+def wait_qid_change(win, old: str, timeout: float = 10.0) -> str:
+    """等题目真的换成另一道。
+
+    旧题的容器还在 DOM 里，所以不能用「容器存在」判断加载完成，
+    必须比对题号。这是之前读错题、答案点错位的根因。
+    """
+    end = time.time() + timeout
+    while time.time() < end:
+        q = current_qid(win)
+        if q and q != old:
+            return q
+        time.sleep(0.2)
+    return ""
+
+
+def prev_question(win) -> bool:
+    """翻回上一题，以题号变化为准。"""
+    old = current_qid(win)
+    r = _js(win, "(function(){var b=document.getElementById('preQuestion');"
+                 "if(!b)return 'none';b.click();return 'ok';})()", timeout=6.0)
+    if r != "ok":
+        return False
+    return bool(wait_qid_change(win, old, timeout=6.0))
+
+
+def goto_first(win, log=None) -> bool:
+    """回到第 1 题。
+
+    先走答题卡（最快）；答题卡里第 1 题可能因为已完成而点不动，
+    这时退回「连续点上一题」，别因为一次点击失败就放弃整轮。
+    """
+    old = current_qid(win)
+    open_card(win)
+    js = ("(function(){var lis=document.querySelectorAll('.answerSheetBox li.nav-revise');"
+          "for(var i=0;i<lis.length;i++){var a=lis[i].querySelector('a');"
+          "if(a&&(a.innerText||'').trim()==='1'){a.click();return 'ok';}}"
+          "return 'notfound';})()")
+    if _js(win, js, timeout=6.0) == "ok":
+        if wait_qid_change(win, old) or current_qid(win) == old:
+            return True
+
+    # 兜底：一路点上一题退回开头
+    if log:
+        log("  答题卡跳转没生效，改用「上一题」逐步退回开头")
+    for _ in range(120):
+        before = current_qid(win)
+        if not prev_question(win):
+            # 没有上一题按钮了，说明已经在第一题
+            return True
+        if current_qid(win) == before:
+            return False
+    return False
+
+
+def next_question(win) -> bool:
+    """翻到下一题，以题号变化为准。"""
+    old = current_qid(win)
+    r = _js(win, "(function(){var b=document.getElementById('nextQuestion');"
+                 "if(!b)return 'none';b.click();return 'ok';})()", timeout=6.0)
+    if r != "ok":
+        return False
+    return bool(wait_qid_change(win, old))
 
 
 def wait_ready(win, timeout: float = 8.0) -> bool:
@@ -143,9 +272,16 @@ def read_answer(win) -> str:
 
 
 def open_card(win) -> None:
-    _js(win, "(function(){var b=document.querySelector('div.answerIcon');"
-             "if(b)b.click();return 'ok';})()")
-    time.sleep(0.6)
+    """展开答题卡面板。已经展开时不要再点，否则会把它关掉。"""
+    state = _js(win, "(function(){"
+                    "var box=document.querySelector('.answerSheetBox');"
+                    "var vis=box&&(box.offsetWidth>0||box.offsetHeight>0||box.getClientRects().length>0);"
+                    "if(vis)return 'open';"
+                    "var b=document.querySelector('div.answerIcon');"
+                    "if(b){b.click();return 'clicked';}"
+                    "return 'notfound';})()", timeout=5.0)
+    if state == "clicked":
+        time.sleep(0.6)
 
 
 def read_card(win):
@@ -163,10 +299,11 @@ def goto(win, num: str) -> bool:
           "for(var i=0;i<lis.length;i++){var a=lis[i].querySelector('a');"
           f"if(a&&(a.innerText||'').trim()==='{num}'){{a.click();return 'ok';}}}}"
           "return 'notfound';})()")
-    ok = _js(win, js) == "ok"
-    if ok:
-        wait_ready(win)
-    return ok
+    old = current_qid(win)
+    if _js(win, js, timeout=6.0) != "ok":
+        return False
+    # 点了题号必须等到题目真的换掉，否则后面读到的是上一题
+    return bool(wait_qid_change(win, old))
 
 
 def click_option(win, key: str) -> None:
@@ -319,10 +456,9 @@ def solve_current(win, log=print):
                      type_name=info["typeName"])
 
     if info.get("answered"):
-        # 已经答过的也记进题库，不然之前答的全白答
-        if info["answered"] in options:
-            remember(q, info, [info["answered"]])
-        log(f"  [{prog}] 已有答案 {info['answered']!r}")
+        # 不把页面上的既有答案写进题库：它可能是旧版本错位留下的错误答案，
+        # 也可能是用户手填的，来源不可验证。入库会让错误一直传下去。
+        log(f"  [{prog}] 已有答案 {info['answered']!r}（沿用，不入库）")
         return "already"
 
     if not options:
@@ -330,6 +466,7 @@ def solve_current(win, log=print):
         return "fail"
 
     keys, answer = [], ""
+    log(f"  [{prog}] 正在问模型…")
     for _ in range(2):
         answer = ask_ai(q) or ""
         keys = pick_keys(info["options"], answer)
@@ -439,23 +576,46 @@ def run_pass(win, log=print, rounds: int = 3, deadline_minutes: float = 25) -> d
             break
         undone = card["undone"]
         log(f"第 {rnd + 1} 轮：共 {card['total']} 题，已答 {card['done']}，未答 {len(undone)}")
+        install_guard(win)
+        drain_dialogs(win, log)
         if not undone:
             stats["left"] = 0
             return stats
 
-        for num in undone:
+        # 从第 1 题顺序翻到卷尾：不靠答题卡乱跳，阅读顺序也更符合直觉
+        if not goto_first(win, log):
+            log("回不到第 1 题，本轮放弃")
+            break
+        install_guard(win)
+        drain_dialogs(win, log)
+
+        seen: set = set()
+        while True:
             if _t.time() > deadline:
                 log("时间到，本轮中止")
                 break
-            if not goto(win, num):
-                log(f"  [{num}] 跳不过去")
-                stats["fail"] += 1
-                continue
+            info = read_question(win)
+            qid = (info or {}).get("qid", "")
+            if not info or not info.get("ok"):
+                log("读不到题目，视为卷尾")
+                break
+            if qid and qid in seen:
+                log("题目回到已处理位置，视为卷尾")
+                break
+            if qid:
+                seen.add(qid)
+
+            prog = info.get("progress", "")
             status = solve_current(win, log)
+            drain_dialogs(win, log)
             if status == "ok":
                 stats["ok"] += 1
             elif status == "fail":
                 stats["fail"] += 1
+
+            if not next_question(win):
+                log("已到最后一题")
+                break
 
         card = read_card(win)
         if card.get("ok"):

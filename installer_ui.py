@@ -22,15 +22,24 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request
 
-APP_NAME = "超星AI答题"
-APP_DISPLAY = "超星 AI 答题"
-APP_VERSION = "3.7.6"
-EXE_NAME = f"{APP_NAME}.exe"
-DEFAULT_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Programs" / APP_NAME
-UNINSTALL_KEY = rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{APP_NAME}"
+from install_common import (
+    APP_DISPLAY,
+    APP_NAME,
+    DEFAULT_DIR,
+    EXE_NAME,
+    LEGACY_UNINSTALLER,
+    PROGRAM_ITEMS,
+    UNINSTALLER_NAME,
+    UNINSTALL_KEY,
+    desktop_dir,
+    dir_size,
+    human_size,
+    read_installed,
+    start_menu_dir,
+    taskkill_app,
+)
 
-# 安装目录里属于程序本身的东西；其余（config.ini、cookies.txt、library.db 等）是用户数据
-PROGRAM_ITEMS = {"_internal", EXE_NAME, "uninstall.exe"}
+APP_VERSION = "3.7.11"
 
 app = Flask("installer", static_folder=None)
 
@@ -55,15 +64,6 @@ def find_payload() -> Path:
     return Path(__file__).parent / "payload.zip"
 
 
-def desktop_dir() -> Path:
-    return Path(os.path.join(os.environ["USERPROFILE"], "Desktop"))
-
-
-def start_menu_dir() -> Path:
-    return Path(os.path.join(os.environ["APPDATA"], "Microsoft", "Windows",
-                             "Start Menu", "Programs"))
-
-
 def make_shortcut(link: Path, target: Path) -> None:
     script = (
         "$W = New-Object -ComObject WScript.Shell;"
@@ -79,20 +79,53 @@ def make_shortcut(link: Path, target: Path) -> None:
 
 
 def write_registry(uninstall_path: Path) -> None:
+    """登记「已安装的应用」里的卸载入口。
+
+    UninstallString 指向卸载器本体（不带参数），控制面板点一下就出卸载界面；
+    QuietUninstallString 是静默卸载，默认保留本地资料 —— 静默那条路不该替用户
+    决定删掉账号和题库。
+    """
     try:
+        import datetime
         import winreg
 
+        app_exe = uninstall_path.parent / EXE_NAME
+        quoted = f'"{uninstall_path}"'
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, UNINSTALL_KEY) as key:
             winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, APP_DISPLAY)
             winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, APP_VERSION)
             winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, "lingluandf")
             winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(uninstall_path.parent))
-            winreg.SetValueEx(key, "UninstallString", 0, winreg.REG_SZ, f'"{uninstall_path}" --uninstall')
-            winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ, str(uninstall_path))
+            winreg.SetValueEx(key, "UninstallString", 0, winreg.REG_SZ, quoted)
+            winreg.SetValueEx(key, "QuietUninstallString", 0, winreg.REG_SZ, quoted + " --silent")
+            winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ,
+                              str(app_exe if app_exe.exists() else uninstall_path))
+            winreg.SetValueEx(key, "InstallDate", 0, winreg.REG_SZ,
+                              datetime.date.today().strftime("%Y%m%d"))
+            try:
+                estimated = (dir_size(uninstall_path.parent / "_internal")
+                             + dir_size(app_exe)) // 1024
+                winreg.SetValueEx(key, "EstimatedSize", 0, winreg.REG_DWORD, max(1, estimated))
+            except Exception:
+                pass
             winreg.SetValueEx(key, "NoModify", 0, winreg.REG_DWORD, 1)
             winreg.SetValueEx(key, "NoRepair", 0, winreg.REG_DWORD, 1)
     except Exception:
         pass
+
+
+def detect_installed(target: Path = None) -> dict:
+    """看看这台机器上是不是已经装过，装过就报出位置和版本。"""
+    info = read_installed()
+    location = Path(info["location"]) if info.get("location") else None
+    if location and (location / EXE_NAME).exists():
+        return {"installed": True, "version": info.get("version", ""),
+                "location": str(location)}
+    for candidate in ([target] if target else []) + [DEFAULT_DIR]:
+        if candidate and (candidate / EXE_NAME).exists():
+            return {"installed": True, "version": info.get("version", ""),
+                    "location": str(candidate)}
+    return {"installed": False, "version": "", "location": ""}
 
 
 def choose_folder(current: str) -> str:
@@ -134,6 +167,9 @@ def install_files(target: Path, report=None) -> None:
 
     say(5, "正在准备安装目录…")
     target.mkdir(parents=True, exist_ok=True)
+    # 覆盖安装时程序可能还在托盘里跑着，占着 _internal 里的 dll 会让解压失败
+    taskkill_app()
+    time.sleep(1.0)
     # 只删本程序的目录和可执行文件。配置、cookie、题库是用户的，重装不能清掉；
     # 万一目录选错了，也只会碰到这几个固定名字，不会把别人的文件删光。
     for item in target.iterdir():
@@ -159,13 +195,16 @@ def install_files(target: Path, report=None) -> None:
     make_shortcut(start_menu_dir() / f"{APP_DISPLAY}.lnk", exe)
 
     say(94, "正在注册卸载信息…")
-    uninstall = target / "uninstall.exe"
-    try:
-        shutil.copy2(Path(sys.executable) if getattr(sys, "frozen", False) else Path(__file__),
-                     uninstall)
-    except Exception:
-        pass
-    write_registry(uninstall)
+    uninstaller = target / UNINSTALLER_NAME
+    if not uninstaller.exists():
+        # 老安装包里没有独立卸载器，退回旧做法：把自己复制过去当卸载程序
+        try:
+            shutil.copy2(Path(sys.executable) if getattr(sys, "frozen", False) else Path(__file__),
+                         target / LEGACY_UNINSTALLER)
+            uninstaller = target / LEGACY_UNINSTALLER
+        except Exception:
+            pass
+    write_registry(uninstaller)
 
     say(100, "安装完成")
 
@@ -188,6 +227,12 @@ def index():
 @app.get("/api/default_dir")
 def api_default_dir():
     return jsonify(path=str(DEFAULT_DIR))
+
+
+@app.get("/api/detect")
+def api_detect():
+    """界面上要明确告诉用户：这是覆盖安装，资料不会丢。"""
+    return jsonify(detect_installed())
 
 
 @app.get("/api/progress")
@@ -283,6 +328,11 @@ HTML = """
   .tip{font-size:11.5px;color:var(--ink3)}
   .note{font-size:11.5px;color:var(--ink3);margin:8px 0 0;line-height:1.7}
   .warn{color:#c76a00}
+  .mono{font-family:"Cascadia Mono",Consolas,monospace;font-size:11.5px;word-break:break-all;color:var(--ink);margin-top:4px}
+  .kv{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:var(--ink2);padding:2px 0}
+  .kv b{color:var(--ink);font-weight:500}
+  .kv span{min-width:0;overflow-wrap:anywhere}
+  .card[hidden]{display:none}
   .progress{height:6px;border-radius:3px;background:rgba(0,0,0,.07);overflow:hidden;margin:14px 0 10px}
   .bar{height:100%;width:0;background:var(--blue);border-radius:3px;transition:width .25s var(--ease)}
   .status{font-size:12px;color:var(--ink2);min-height:18px}
@@ -309,6 +359,12 @@ HTML = """
 
   <main>
     <section class="pane on" id="pane-welcome">
+      <div class="card" id="card-exist" hidden>
+        <h2>这台电脑上已经装过了</h2>
+        <div class="kv"><span>已安装版本</span><b id="exist-version">—</b></div>
+        <div class="mono" id="exist-path">—</div>
+        <p class="note" id="exist-note">继续就是覆盖安装：程序文件换成新版本，本地账号、题库和配置都会保留。</p>
+      </div>
       <div class="card">
         <h2>安装后会得到</h2>
         <ul>
@@ -328,7 +384,7 @@ HTML = """
           <input type="text" id="path" spellcheck="false">
           <button id="browse">浏览…</button>
         </div>
-        <p class="note" id="path-note">默认安装到当前用户目录，卸载时整目录删除。</p>
+        <p class="note" id="path-note">卸载时可以选择是否保留本地资料。</p>
       </div>
       <div class="card">
         <h2>将创建</h2>
@@ -376,6 +432,23 @@ const PANES = ["pane-welcome", "pane-path", "pane-install", "pane-done"];
 let step = 0;
 let target = __DEFAULT_DIR__;
 let polling = null;
+let existing = {installed: false, version: "", location: ""};
+
+async function detect() {
+  try {
+    const d = await fetch("/api/detect").then(r => r.json());
+    existing = d;
+    if (!d.installed) return;
+    $("card-exist").hidden = false;
+    $("exist-version").textContent = d.version ? ("v" + d.version) : "未知";
+    $("exist-path").textContent = d.location || "—";
+    if (d.location) {
+      target = d.location;
+      $("path").value = target;
+    }
+    $("path-note").textContent = "覆盖安装：程序文件换成新版本，本地账号、题库、配置都会保留。";
+  } catch (e) {}
+}
 
 function show(i) {
   step = i;
@@ -383,7 +456,8 @@ function show(i) {
   $("back").style.display = i === 1 ? "" : "none";
   $("next").style.display = i === 2 ? "none" : "";
   if (i === 0) { $("next").textContent = "下一步"; $("tip").textContent = "整个过程大约 30 秒"; }
-  if (i === 1) { $("next").textContent = "安装"; $("tip").textContent = "确认位置后开始安装"; }
+  if (i === 1) { $("next").textContent = existing.installed ? "覆盖安装" : "安装";
+    $("tip").textContent = existing.installed ? "会保留本地资料" : "确认位置后开始安装"; }
   if (i === 2) { $("tip").textContent = "安装中，请勿关闭窗口"; }
   if (i === 3) { $("next").textContent = "完成"; $("tip").textContent = ""; }
 }
@@ -398,6 +472,7 @@ async function post(url, body) {
 }
 
 $("path").value = target;
+detect();
 
 $("back").onclick = () => { if (step === 1) show(0); };
 
@@ -407,7 +482,9 @@ $("browse").onclick = async () => {
   try {
     const d = await post("/api/browse", {current: $("path").value.trim() || target});
     if (d.path) $("path").value = d.path;
-    $("path-note").textContent = "默认安装到当前用户目录，卸载时整目录删除。";
+    $("path-note").textContent = existing.installed
+      ? "覆盖安装：程序文件换成新版本，本地账号、题库、配置都会保留。"
+      : "卸载时可以选择是否保留本地资料。";
   } catch (e) {
     $("path-note").textContent = "无法打开文件夹选择，请直接手动输入路径";
     $("path-note").classList.add("warn");

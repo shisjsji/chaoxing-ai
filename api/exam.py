@@ -789,13 +789,12 @@ def ask_ai(question: ExamQuestion) -> Optional[str]:
 def resolve_answer(question: ExamQuestion, library: Library) -> tuple[str, str]:
     """先查题库，未命中再问模型。返回 (答案, 来源)。"""
     fp = fingerprint(question.title, question.options_text, question.qtype)
+    # 只复用「已确认」的答案。待验证的答案当初也是模型猜的、从没人核对过，
+    # 拿它直接交卷会把过去的错误原样带上卷子（实测正确率明显偏低），
+    # 所以宁可在考场上重新问一次。
     cached = library.lookup(fp)
-    if not cached:
-        # 考试和刷课攒下来的答案基本都停在「待验证」，
-        # 不复用的话题库永远只有进没有出。
-        cached = library.lookup(fp, confirmed_only=False)
     if cached:
-        logger.info(f"题库命中：{question.title[:32]} -> {cached}")
+        logger.info(f"题库命中（已确认）：{question.title[:32]} -> {cached}")
         return cached, "library"
 
     answer = ask_ai(question)

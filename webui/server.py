@@ -57,8 +57,14 @@ app = Flask(
 )
 
 _lock = threading.Lock()
+# 更新进度：下载在后台线程跑，前端轮询这个状态画进度条
+_update_state = {"stage": "idle", "percent": 0, "done": 0, "total": 0,
+                 "message": "", "error": "", "version": ""}
+
 # 内嵌考试浏览器：由桌面入口注入窗口对象，这里负责盯着它的地址栏
 _exam_browser = {"window": None, "url": "", "enc": "", "answer_id": "", "exam_id": ""}
+# 退出钩子：桌面入口注入，更新要重启时用它走正常的退出流程
+_quit_hook = {"fn": None}
 _state = {
     "proc": None,
     "logs": deque(maxlen=6000),
@@ -232,6 +238,41 @@ def set_exam_window(window) -> None:
     _exam_browser["window"] = window
 
 
+def set_quit_hook(fn) -> None:
+    """桌面入口把「按正常流程退出」的函数交过来。"""
+    _quit_hook["fn"] = fn
+
+
+def quit_for_update() -> None:
+    """更新前自己退出，而不是等更新脚本 Force 硬杀。
+
+    硬杀会让 msedgewebview2 变成孤儿，占着 WebView2 的配置目录不放手，
+    下次启动就得排队等它 —— 表现就是开头几秒黑屏。这里走正常退出：
+    先关考场窗口，再让桌面入口的 quit_app 关主窗口，进程自然结束。
+    """
+
+    def run() -> None:
+        # 先让 /api/update/restart 的响应发出去，再动窗口
+        time.sleep(0.6)
+        try:
+            win = _exam_browser.get("window")
+            if win is not None:
+                win.destroy()
+        except Exception:
+            pass
+        fn = _quit_hook.get("fn")
+        if fn is not None:
+            try:
+                fn()
+            except Exception:
+                pass
+        # 窗口关完 webview.start() 会返回、进程自己退；这里是兜底
+        time.sleep(3.0)
+        os._exit(0)
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 def _watch_exam_browser() -> None:
     """盯着内嵌浏览器的地址栏。
 
@@ -330,6 +371,12 @@ def _drive_exam(win) -> None:
         with _lock:
             _state["exam"].update(error=f"{type(exc).__name__}: {exc}")
         log(f"自动作答中断：{type(exc).__name__}: {exc}")
+        try:
+            from api.feedback import push_error
+
+            push_error("exam.autodrive", exc, f"elapsed={int(time.time() - started)}s")
+        except Exception:
+            pass
     finally:
         with _lock:
             _state["exam"].update(driving=False, status="done")
@@ -598,6 +645,27 @@ def api_exam_status():
         return jsonify(dict(_state["exam"]))
 
 
+@app.post("/api/feedback/push")
+def api_feedback_push():
+    """前端提交反馈，或把最近的日志一并发上来。"""
+    data = request.get_json(force=True, silent=True) or {}
+    message = str(data.get("message", "")).strip()
+    context = str(data.get("context", "")).strip()
+    kind = str(data.get("kind", "feedback")).strip() or "feedback"
+    module = str(data.get("module", "ui")).strip() or "ui"
+    if not message and not context:
+        return jsonify(ok=False, error="内容为空"), 400
+    try:
+        from api.feedback import push
+
+        ok = push(kind, module, message, context)
+        if not ok:
+            return jsonify(ok=False, error="发送失败，请检查网络后重试"), 502
+        return jsonify(ok=True, message="已发送，感谢反馈")
+    except Exception as exc:
+        return jsonify(ok=False, error=f"{type(exc).__name__}: {exc}"), 500
+
+
 @app.get("/api/update/check")
 def api_update_check():
     try:
@@ -615,23 +683,111 @@ def api_update_check():
 
 @app.post("/api/update/apply")
 def api_update_apply():
+    """启动更新。立刻返回，进度由 /api/update/progress 查询。"""
     data = request.get_json(force=True, silent=True) or {}
     url = str(data.get("url", "")).strip()
     sha = str(data.get("sha256", "")).strip()
+    version = str(data.get("version", "")).strip()
     if not url:
         return jsonify(ok=False, error="缺少下载地址"), 400
-    try:
-        from api.updater import apply_and_restart, download
 
-        path = download(url, sha)
-        restarted = apply_and_restart(path)
-        return jsonify(
-            ok=True,
-            applied=restarted,
-            message="更新包已就绪，程序将在几秒后重启" if restarted else "已下载（开发模式不自动替换）",
-        )
+    with _lock:
+        if _update_state["stage"] in ("downloading", "verifying", "preparing", "restarting"):
+            return jsonify(ok=False, error="更新已经开始了，请等它跑完"), 409
+        _update_state.update(stage="downloading", percent=0, done=0, total=0,
+                             message="正在连接下载服务器", error="", version=version)
+
+    threading.Thread(target=_run_update, args=(url, sha, version), daemon=True).start()
+    return jsonify(ok=True, message="已开始下载")
+
+
+def _run_update(url: str, sha: str, version: str) -> None:
+    """后台下载并准备替换。每一步都更新 _update_state 供前端显示。"""
+    from api.updater import apply_and_restart, download
+
+    def progress(done_bytes: int, total_bytes: int) -> None:
+        percent = int(done_bytes * 100 / total_bytes) if total_bytes else 0
+        mb_done = done_bytes / 1024 / 1024
+        if total_bytes:
+            message = f"已下载 {mb_done:.1f} / {total_bytes / 1024 / 1024:.0f} MB"
+        else:
+            message = f"已下载 {mb_done:.1f} MB"
+        with _lock:
+            _update_state.update(percent=percent, done=done_bytes,
+                                 total=total_bytes, message=message)
+
+    try:
+        path = download(url, sha, progress=progress)
+        with _lock:
+            _update_state.update(stage="verifying", percent=100, message="校验通过")
+        from api.updater import save_pending
+
+        save_pending(path, version, sha)
+        with _lock:
+            # 停在这里等用户决定，不自动重启
+            _update_state.update(stage="ready", percent=100,
+                                 message="已下载完成，点「立即重启」安装")
     except Exception as exc:
+        with _lock:
+            _update_state.update(stage="error",
+                                 error=f"{type(exc).__name__}: {exc}",
+                                 message="更新失败，已保留当前版本")
+        _append_log(f"更新失败：{type(exc).__name__}: {exc}")
+        try:
+            from api.feedback import push_error
+
+            push_error("update.apply", exc, f"version={version}")
+        except Exception:
+            pass
+
+
+@app.post("/api/update/restart")
+def api_update_restart():
+    """用户点「立即重启」后才真正替换并重启。"""
+    from api.updater import apply_and_restart, load_pending
+
+    pending = load_pending()
+    if not pending:
+        with _lock:
+            _update_state.update(stage="idle", percent=0, message="", error="")
+        return jsonify(ok=False, error="没有已下载的更新包，请重新检查更新"), 400
+
+    with _lock:
+        if _update_state["stage"] == "restarting":
+            return jsonify(ok=False, error="已经在重启了"), 409
+        _update_state.update(stage="restarting", percent=100, message="正在退出并安装，稍等")
+
+    try:
+        restarted = apply_and_restart(pending["zip"])
+    except Exception as exc:
+        with _lock:
+            _update_state.update(stage="error", error=f"{type(exc).__name__}: {exc}",
+                                 message="安装启动失败，已保留当前版本")
         return jsonify(ok=False, error=f"{type(exc).__name__}: {exc}"), 500
+
+    if not restarted:
+        with _lock:
+            _update_state.update(stage="ready", percent=100,
+                                 message="开发模式下不自动替换，更新包已就绪")
+        return jsonify(ok=False, error="开发模式下不执行替换"), 400
+    quit_for_update()
+    return jsonify(ok=True, message="正在重启安装")
+
+
+@app.get("/api/update/progress")
+def api_update_progress():
+    with _lock:
+        state = dict(_update_state)
+    # 进程重启过：内存状态丢了，但磁盘上可能还有已下载的包
+    if state.get("stage") in ("idle", ""):
+        from api.updater import load_pending
+
+        pending = load_pending()
+        if pending:
+            state.update(stage="ready", percent=100,
+                         message=f"更新包已就绪（v{pending.get('version', '')}），点「立即重启」安装",
+                         version=pending.get("version", ""))
+    return jsonify(state)
 
 
 @app.get("/api/library")
