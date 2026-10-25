@@ -23,6 +23,8 @@ from api.answer_check import cut
 from api.cipher import AESCipher
 from api.config import GlobalConst as gc
 from api.cookies import save_cookies, use_cookies
+from api.library import Library, fingerprint
+from api.logger import emit_event, get_chapter, get_chapter_course
 from api.decode import (
     decode_course_list,
     decode_course_point,
@@ -214,6 +216,35 @@ def best_option_by_similarity(target: str, options: list, threshold: float = 0.8
         logger.info(f"相似度兜底匹配成功: {best_letter} (score={best_score:.2f}, threshold={threshold:.2f})")
         return best_letter
     return ""
+
+
+def match_option_exact(target: str, options: list) -> str:
+    """把模型给出的答案文本映射回选项字母。
+
+    顺序：完全相等 > 答案包含选项原文 > 相似度。
+    原实现直接判断「答案是选项的子序列」，短答案会被排在前面的长选项抢走
+    （答「国防」却匹配到「国防建设」），这是错选的主要来源。
+    """
+    if not target or not options:
+        return ""
+    t_norm = normalize_text(target)
+    if not t_norm:
+        return ""
+
+    for option in options:
+        if normalize_text(get_option_text(option)) == t_norm:
+            return option[:1]
+
+    contained = []
+    for option in options:
+        o_norm = normalize_text(get_option_text(option))
+        if len(o_norm) >= 2 and o_norm in t_norm:
+            contained.append((len(o_norm), option[:1]))
+    if contained:
+        contained.sort(reverse=True)
+        return contained[0][1]
+
+    return best_option_by_similarity(target, options, threshold=0.85)
 
 
 def is_subsequence(a, o):
@@ -852,6 +883,59 @@ class Chaoxing:
                 logger.trace(f"关闭进度条失败: {e}")
         return None
 
+    def _resolve_answer(self, q: dict, res, origin_html: str = "") -> str:
+        """把题库或模型返回的答案转换成可提交的格式, 无法转换时返回空串。"""
+        answer = ""
+        if q["type"] == "multiple":
+            options_list = multi_cut(q["options"], origin_html)
+            res_list = multi_cut(res, origin_html)
+            if res_list is not None and options_list is not None:
+                for _a in clean_res(res_list):
+                    letter = match_option_exact(_a, options_list)
+                    if letter:
+                        answer += letter
+                answer = "".join(sorted(set(answer)))
+        elif q["type"] == "single":
+            options_list = multi_cut(q["options"], origin_html)
+            if options_list is not None:
+                t_res = clean_res(res)
+                if t_res:
+                    answer = match_option_exact(t_res[0], options_list)
+        elif q["type"] == "judgement":
+            answer = "true" if self.tiku.judgement_select(res) else "false"
+        elif q["type"] == "completion":
+            if isinstance(res, list):
+                answer = "".join(res)
+            elif isinstance(res, str):
+                answer = res
+        else:
+            answer = res
+        return answer
+
+    def _resolve_with_retry(self, q: dict, res, origin_html: str = "") -> str:
+        """映射答案; 匹配不上时回问模型一次, 仍失败则返回空串。"""
+        answer = self._resolve_answer(q, res, origin_html)
+        if answer:
+            return answer
+
+        retry_fn = getattr(self.tiku, "_query", None)
+        if not callable(retry_fn):
+            return ""
+        logger.warning(f"答案未能匹配到选项 -> {res}\t正在重试一次")
+        try:
+            retry_res = retry_fn(q)
+        except Exception as exc:
+            logger.warning("重试请求失败: {}", exc)
+            return ""
+        if not retry_res:
+            return ""
+
+        answer = self._resolve_answer(q, retry_res, origin_html)
+        if answer:
+            logger.info(f"重试后匹配成功：{answer}")
+            q[f'answerSource{q["id"]}'] = "retry"
+        return answer
+
     def study_video(self, _course, _job, _job_info, _speed: float = 1.0,
                     _type: Literal["Video", "Audio"] = "Video") -> StudyResult:
         _session = SessionManager.get_session()
@@ -890,10 +974,18 @@ class Chaoxing:
             return StudyResult.SUCCESS
 
         pbar = None
+        confirm_deadline = 0.0
+        max_confirm_seconds = 180
+        last_report_wall = 0.0
         try:
             while not passed:
+                now_wall = time.monotonic()
+                need_report = play_time - last_log_time >= wait_time
+                # 视频播完后按真实时间降频补报, 避免每秒一次请求
+                if play_time >= duration and (last_report_wall == 0.0 or now_wall - last_report_wall >= 3):
+                    need_report = True
                 # Sometimes the last request needs to be sent several times to complete the task
-                if play_time - last_log_time >= wait_time or play_time == duration:
+                if need_report:
 
                     passed, state = self.video_progress_log(_session, _course, _job, _job_info, _dtoken, duration,
                                                             int(play_time), _type, headers=headers)
@@ -927,8 +1019,24 @@ class Chaoxing:
                     elif not passed and state != 200:
                         return StudyResult.ERROR
 
+                    if play_time >= duration:
+                        if confirm_deadline == 0.0:
+                            confirm_deadline = now_wall + max_confirm_seconds
+                            logger.info("视频已播完, 正在等待平台确认完成状态...")
+                            emit_event({
+                                "type": "video_confirm",
+                                "course": get_chapter_course(),
+                                "chapter": get_chapter(),
+                                "name": str(_job.get("name") or ""),
+                                "state": "confirming",
+                            })
+                        elif now_wall > confirm_deadline:
+                            logger.warning("视频已播完但平台长时间未确认, 放弃当前任务: {}", _job['name'])
+                            return StudyResult.ERROR
+
                     wait_time = int(random.uniform(30, 90))
                     last_log_time = play_time
+                    last_report_wall = now_wall
 
                     logger.trace("Progress logged")
 
@@ -1102,6 +1210,7 @@ class Chaoxing:
                 answers = list(answers) + [None] * (total_questions - len(answers))
                 answers = answers[:total_questions]
 
+            question_items: list[dict] = []
             for q, res in zip(questions["questions"], answers):
                 logger.debug(f"当前题目信息 -> {q}")
                 answer = ""
@@ -1110,61 +1219,32 @@ class Chaoxing:
                     answer = random_answer(q["options"], q["type"])
                     q[f'answerSource{q["id"]}'] = "random"
                 else:
-                    # 根据响应结果选择答案
-                    if q["type"] == "multiple":
-                        # 多选处理
-                        options_list = multi_cut(q["options"], _ORIGIN_HTML_CONTENT)
-                        res_list = multi_cut(res, _ORIGIN_HTML_CONTENT)
-                        if res_list is not None and options_list is not None:
-                            for _a in clean_res(res_list):
-                                matched = False
-                                for o in options_list:
-                                    if (
-                                            is_subsequence(_a, o)  # 去掉各种符号和前面ABCD的答案应当是选项的子序列
-                                    ):
-                                        answer += o[:1]
-                                        matched = True
-                                        break  # 找到匹配项后立即停止，防止重复添加
-                                if not matched:
-                                    best_letter = best_option_by_similarity(_a, options_list, threshold=0.8)
-                                    if best_letter:
-                                        answer += best_letter
-                            # 对答案进行排序, 否则会提交失败
-                            answer = "".join(sorted(set(answer)))
-                        # else 如果分割失败那么就直接到下面去随机选
-                    elif q["type"] == "single":
-                        # 单选也进行切割，主要是防止返回的答案有异常字符
-                        options_list = multi_cut(q["options"], _ORIGIN_HTML_CONTENT)
-                        if options_list is not None:
-                            t_res = clean_res(res)
-                            for o in options_list:
-                                if is_subsequence(t_res[0], o):
-                                    answer = o[:1]
-                                    break
-                            if not answer and t_res:
-                                answer = best_option_by_similarity(t_res[0], options_list, threshold=0.8)
-                    elif q["type"] == "judgement":
-                        answer = "true" if self.tiku.judgement_select(res) else "false"
-                    elif q["type"] == "completion":
-                        if isinstance(res, list):
-                            answer = "".join(res)
-                        elif isinstance(res, str):
-                            answer = res
-                    else:
-                        # 其他类型直接使用答案 （目前仅知有简答题，待补充处理）
-                        answer = res
+                    answer = self._resolve_with_retry(q, res, _ORIGIN_HTML_CONTENT)
 
-                    if not answer:  # 检查 answer 是否为空
-                        logger.warning(f"找到答案但答案未能匹配 -> {res}\t随机选择答案")
-                        answer = random_answer(q["options"], q["type"])  # 如果为空，则随机选择答案
+                    if not answer:
+                        logger.warning(f"重试后仍未匹配 -> {res}\t随机选择答案")
+                        answer = random_answer(q["options"], q["type"])
                         q[f'answerSource{q["id"]}'] = "random"
                     else:
-                        logger.info(f"成功获取到答案：{answer}")
-                        q[f'answerSource{q["id"]}'] = "cover"
+                        if q.get(f'answerSource{q["id"]}') != "retry":
+                            logger.info(f"成功获取到答案：{answer}")
+                            q[f'answerSource{q["id"]}'] = "cover"
                         found_answers += 1
                 # 填充答案
                 q["answerField"][f'answer{q["id"]}'] = answer
                 logger.info(f'{q["title"]} 填写答案为 {answer}')
+                try:
+                    q_fp = fingerprint(q["title"], q.get("options", ""), q["type"])
+                except Exception:
+                    q_fp = ""
+                if q_fp and answer:
+                    question_items.append({
+                        "fingerprint": q_fp,
+                        "title": q["title"],
+                        "options": q.get("options", ""),
+                        "qtype": q["type"],
+                        "answer": answer,
+                    })
             cover_rate = (found_answers / total_questions) * 100
             logger.info(f"章节检测题库覆盖率： {cover_rate:.0f}%")
             # 提交模式  现在与题库绑定,留空直接提交, 1保存但不提交
@@ -1248,6 +1328,7 @@ class Chaoxing:
             unknown = int(result_info.get("unknown", 0) or 0)
             if result_info.get("all_correct", False):
                 logger.info(f"章节检测全部正确（成绩 {score} 分），通过！")
+                self._confirm_library(question_items)
                 return StudyResult.SUCCESS
             if score >= 99.95:
                 # 逐题比对存在格式差异或解析失配, 但满分成绩说明实际全对, 以分数为准
@@ -1256,10 +1337,14 @@ class Chaoxing:
                                    f"（{unknown} 题答案字段未能解析, 建议人工复核）")
                 else:
                     logger.info(f"逐题比对存在格式差异, 但成绩 {score} 分达到满分, 以分数为准, 通过！")
+                self._confirm_library(question_items)
                 return StudyResult.SUCCESS
             if unknown > 0:
                 # 解析失配且未达满分: 判定不可信, 不触发重做, 保留已提交成绩
                 logger.warning(f"{unknown} 题答案字段解析失败且成绩 {score} 分未达满分, 跳过重做判定")
+                if score >= 60:
+                    # 卷面及格说明大部分答对，仍可作为低置信样本贡献题库，由服务端投票定夺
+                    self._confirm_library(question_items, confidence="medium")
                 return StudyResult.SUCCESS
 
             # 7. 未全对：收集错误反馈，进入下一轮重做
@@ -1280,6 +1365,32 @@ class Chaoxing:
         # 达到最大重试次数仍未全对
         logger.error(f"章节检测重试 {max_retries + 1} 次仍未全部正确，请人工检查处理")
         return StudyResult.ERROR
+
+    def _confirm_library(self, items: list[dict], confidence: str = "high") -> None:
+        """上报题目到共享题库。
+
+        confidence=high：整卷全对，本地同时转正；
+        confidence=medium：部分正确，只贡献共享库，需多人交叉验证后才会被采用。
+        """
+        fps = [it["fingerprint"] for it in items if it.get("fingerprint")]
+        if not fps:
+            return
+
+        if confidence == "high":
+            try:
+                count = Library().confirm_many(fps)
+                logger.info(f"本地题库已确认 {count} 道题（整卷全对）")
+            except Exception as exc:
+                logger.warning("确认本地题库失败: {}", exc)
+        else:
+            logger.info(f"本次未全对，{len(fps)} 道题以中等置信度贡献到共享题库")
+
+        try:
+            from api.remote_library import submit_items
+
+            submit_items(items, getattr(self.account, "username", ""), confidence)
+        except Exception as exc:
+            logger.debug("共享题库上报失败: {}", exc)
 
     def _check_work_result(self, _session, _course, _job, _job_info, questions) -> Optional[dict]:
         """

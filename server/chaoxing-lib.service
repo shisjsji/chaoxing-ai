@@ -1,0 +1,23 @@
+[Unit]
+Description=Chaoxing shared question library
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/apps/chaoxing-lib
+EnvironmentFile=/opt/apps/chaoxing-lib/env
+ExecStart=/opt/apps/chaoxing-lib/.venv/bin/gunicorn \
+    --workers 2 \
+    --threads 4 \
+    --bind 127.0.0.1:5001 \
+    --timeout 30 \
+    --access-logfile /opt/apps/chaoxing-lib/data/access.log \
+    --error-logfile /opt/apps/chaoxing-lib/data/error.log \
+    library_service:app
+Restart=always
+RestartSec=3
+MemoryMax=400M
+
+[Install]
+WantedBy=multi-user.target

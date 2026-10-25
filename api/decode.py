@@ -488,6 +488,11 @@ def _get_question_type(type_code: str) -> str:
         "2": "completion",  # 填空题
         "3": "judgement",  # 判断题
         "4": "shortanswer",  # 简答题
+        # 以下题型主要出现在考试卷面
+        "5": "term",  # 名词解释
+        "6": "essay",  # 论述题
+        "7": "calculation",  # 计算题
+        "8": "other",  # 其他
     }
 
     if type_code in type_map:

@@ -1,0 +1,1343 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>超星 AI 答题</title>
+<style>
+  /* ---------- 设计令牌 ---------- */
+  :root{
+    --c-bg:#f6f7f9;
+    --c-surface:#ffffff;
+    --c-ink:#1f2328;
+    --c-ink2:#57606a;
+    --c-ink3:#8c959f;
+    --c-line:#d8dee4;
+    --c-line-soft:#eaeef2;
+    --c-primary:#2563eb;
+    --c-primary-hover:#1d4ed8;
+    --c-primary-soft:#eef3fd;
+    --c-success:#1a7f37;
+    --c-warn:#9a6700;
+    --c-danger:#cf222e;
+    --r:6px;
+    --r-sm:4px;
+    --shadow:0 1px 2px rgba(31,35,40,.06);
+    --dur:160ms;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--c-bg);color:var(--c-ink);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  button,input,select,textarea{font:inherit;color:inherit}
+  :focus-visible{outline:2px solid var(--c-primary);outline-offset:1px}
+
+  /* ---------- 三栏布局 ---------- */
+  .app{
+    display:grid;height:100vh;overflow:hidden;
+    grid-template-columns:200px minmax(0,1fr) 320px;
+    transition:grid-template-columns var(--dur) ease;
+  }
+  .app.nologs{grid-template-columns:200px minmax(0,1fr) 0}
+
+  /* 左：导航 */
+  .nav{
+    display:flex;flex-direction:column;gap:2px;
+    background:var(--c-surface);border-right:1px solid var(--c-line);
+    padding:12px 8px;overflow:hidden;
+  }
+  .nav-brand{padding:4px 8px 12px;font-size:13px;font-weight:600;color:var(--c-ink)}
+  .nav-brand small{display:block;font-weight:400;font-size:11px;color:var(--c-ink3);margin-top:2px}
+  .nav-item{
+    display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;
+    border:0;border-radius:var(--r-sm);background:transparent;color:var(--c-ink);
+    font-size:13px;text-align:left;cursor:pointer;white-space:nowrap;
+    transition:background var(--dur) ease;
+  }
+  .nav-item:hover{background:var(--c-line-soft)}
+  .nav-item[aria-current="page"]{background:var(--c-primary-soft);color:var(--c-primary);font-weight:500}
+  .nav-foot{margin-top:auto;padding:10px 8px 2px;border-top:1px solid var(--c-line-soft);
+    font-size:11px;color:var(--c-ink3);line-height:1.6;overflow:hidden}
+
+  /* 中：主区 */
+  .main{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+  .toolbar{
+    display:flex;align-items:center;gap:8px;height:48px;padding:0 16px;
+    background:var(--c-surface);border-bottom:1px solid var(--c-line);flex:0 0 auto;
+  }
+  .status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--c-ink2)}
+  .status .dot{width:8px;height:8px;border-radius:50%;background:var(--c-ink3)}
+  .status .dot.run{background:var(--c-success);animation:pulseDot 1.8s ease-in-out infinite}
+  .status .dot.err{background:var(--c-danger)}
+  .status .dot.wait{background:var(--c-warn)}
+  .spacer{flex:1}
+  #msg{font-size:12px;color:var(--c-ink2);max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #msg.err{color:var(--c-danger)}
+  #msg.ok{color:var(--c-success)}
+  #msg.warn{color:var(--c-warn)}
+
+  .content{flex:1;overflow:auto;padding:16px 20px 28px}
+  .page{display:none}
+  .page.on{display:block;animation:fadeUp 220ms ease both}
+
+  /* ---------- 动效：只用透明度和几像素位移，克制、不抢注意力 ---------- */
+  @keyframes fadeUp{
+    from{opacity:0;transform:translateY(6px)}
+    to{opacity:1;transform:none}
+  }
+  @keyframes rowIn{
+    from{opacity:0;transform:translateY(4px)}
+    to{opacity:1;transform:none}
+  }
+  @keyframes logIn{
+    from{opacity:0;transform:translateX(-4px)}
+    to{opacity:1;transform:none}
+  }
+  @keyframes pulseDot{
+    0%,100%{box-shadow:0 0 0 0 rgba(37,99,235,.45)}
+    50%{box-shadow:0 0 0 4px rgba(37,99,235,0)}
+  }
+  @keyframes fadeIn{
+    from{opacity:0}
+    to{opacity:1}
+  }
+
+  .list-row{animation:rowIn 200ms ease both}
+  .list-row:nth-child(2){animation-delay:18ms}
+  .list-row:nth-child(3){animation-delay:36ms}
+  .list-row:nth-child(4){animation-delay:54ms}
+  .list-row:nth-child(5){animation-delay:72ms}
+  .list-row:nth-child(6){animation-delay:90ms}
+  .list-row:nth-child(n+7){animation-delay:108ms}
+
+  #logs > div{animation:logIn 160ms ease both}
+  .card{animation:fadeIn 200ms ease both}
+  #update-bar:not([hidden]){animation:fadeUp 200ms ease both}
+  dialog.update[open]{animation:fadeUp 200ms ease both}
+  dialog.update[open]::backdrop{animation:fadeIn 200ms ease both}
+
+  /* 运行中让状态点轻轻呼吸，一眼看出程序还活着 */
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{
+      animation-duration:.01ms !important;
+      animation-iteration-count:1 !important;
+      transition-duration:.01ms !important;
+    }
+  }
+  .page-title{font-size:15px;font-weight:600;margin:0 0 4px}
+  .page-sub{margin:0 0 14px;font-size:12px;color:var(--c-ink2)}
+
+  /* 右：日志 */
+  .logs{
+    display:flex;flex-direction:column;background:var(--c-surface);
+    border-left:1px solid var(--c-line);overflow:hidden;
+  }
+  .app.nologs .logs{border-left:0}
+  .logs-head{
+    display:flex;align-items:center;gap:8px;height:48px;padding:0 12px;
+    border-bottom:1px solid var(--c-line);flex:0 0 auto;
+  }
+  .logs-head span{font-size:12px;font-weight:600;color:var(--c-ink2)}
+  .logs-head .spacer{flex:1}
+  #logs{
+    flex:1;overflow:auto;padding:8px 12px;
+    font:11.5px/1.65 ui-monospace,"Cascadia Mono",Consolas,monospace;
+    white-space:pre-wrap;word-break:break-all;color:var(--c-ink2);
+  }
+  #logs .warn{color:var(--c-warn)}
+  #logs .err{color:var(--c-danger)}
+  #logs .ok{color:var(--c-success)}
+
+  /* ---------- 组件 ---------- */
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;
+    height:28px;padding:0 12px;border:1px solid var(--c-line);border-radius:var(--r-sm);
+    background:var(--c-surface);color:var(--c-ink);font-size:12.5px;cursor:pointer;
+    white-space:nowrap;
+    transition:background var(--dur) ease,border-color var(--dur) ease;
+  }
+  .btn:hover{background:var(--c-line-soft);border-color:#c2cad3}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.primary{background:var(--c-primary);border-color:var(--c-primary);color:#fff}
+  .btn.primary:hover{background:var(--c-primary-hover);border-color:var(--c-primary-hover)}
+  .btn.text{border-color:transparent;background:transparent;color:var(--c-primary);padding:0 6px}
+  .btn.text:hover{background:var(--c-primary-soft)}
+  kbd{
+    font:11px/1 ui-monospace,Consolas,monospace;padding:1px 4px;border:1px solid rgba(255,255,255,.4);
+    border-radius:3px;color:inherit;opacity:.75;
+  }
+  .btn:not(.primary) kbd{border-color:var(--c-line);opacity:1;color:var(--c-ink3)}
+
+  .card{
+    background:var(--c-surface);border:1px solid var(--c-line);border-radius:var(--r);
+    padding:12px 14px;margin-bottom:10px;
+  }
+  .card h3{margin:0 0 10px;font-size:12px;font-weight:600;color:var(--c-ink2)}
+
+  label.field{display:block;margin-bottom:10px}
+  label.field > span{display:block;font-size:11.5px;color:var(--c-ink2);margin-bottom:4px}
+  .input,.select{
+    width:100%;height:30px;padding:0 8px;border:1px solid var(--c-line);border-radius:var(--r-sm);
+    background:var(--c-surface);color:var(--c-ink);
+  }
+  .input:focus,.select:focus{outline:none;border-color:var(--c-primary);box-shadow:0 0 0 2px var(--c-primary-soft)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 14px}
+  .row{display:flex;gap:8px;align-items:flex-end}
+
+  .check{display:flex;align-items:center;gap:6px;font-size:12.5px;margin:8px 0 0;cursor:pointer}
+  .check input{width:14px;height:14px;accent-color:var(--c-primary)}
+
+  /* 列表行：紧凑表格化，替代卡片堆叠 */
+  .list{border:1px solid var(--c-line);border-radius:var(--r);background:var(--c-surface);overflow:hidden}
+  .list-row{
+    display:flex;align-items:center;gap:12px;padding:8px 12px;
+    border-bottom:1px solid var(--c-line-soft);font-size:12.5px;
+  }
+  .list-row:last-child{border-bottom:0}
+  .list-row:hover{background:var(--c-line-soft)}
+  .list-row .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .list-row .name small{color:var(--c-ink3);margin-right:6px}
+  .list-row .bar{flex:0 0 180px;height:6px;border-radius:3px;background:var(--c-line-soft);overflow:hidden}
+  .list-row .bar i{display:block;height:100%;width:0;background:var(--c-primary);transition:width var(--dur) ease}
+  .list-row.done .bar i{background:var(--c-success)}
+  .list-row.error .bar i{background:var(--c-danger)}
+  .list-row.notopen .bar i{background:var(--c-ink3)}
+  .list-row .meta{flex:0 0 auto;min-width:132px;text-align:right;font-size:11.5px;color:var(--c-ink2)}
+  .list-row.done .meta{color:var(--c-success)}
+  .list-row.error .meta{color:var(--c-danger)}
+  .list-row.confirming .meta{color:var(--c-warn)}
+  .list-row .actions{flex:0 0 auto;display:flex;gap:6px}
+
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+  .stat{border:1px solid var(--c-line);border-radius:var(--r);background:var(--c-surface);padding:10px 12px}
+  .stat .k{font-size:11px;color:var(--c-ink2)}
+  .stat .v{font-size:18px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+  .stat .v.ok{color:var(--c-success)}
+  .stat .v.bad{color:var(--c-danger)}
+  .stat .v.run{color:var(--c-primary)}
+
+  /* 状态：空 / 加载 / 错误 / 禁用 */
+  .state{padding:28px 12px;text-align:center;font-size:12.5px;color:var(--c-ink3);
+    border:1px dashed var(--c-line);border-radius:var(--r);background:var(--c-surface)}
+  .state.error{color:var(--c-danger);border-color:#f3c2c6;background:#fff8f8}
+  .state .hint{display:block;margin-top:6px;font-size:11.5px;color:var(--c-ink3)}
+  .state .retry{margin-top:10px}
+
+  /* 更新提示 */
+  #update-bar{
+    display:flex;align-items:center;gap:10px;padding:6px 16px;flex:0 0 auto;
+    background:var(--c-primary-soft);border-bottom:1px solid #cfdcf8;font-size:12px;
+  }
+  #update-bar[hidden]{display:none}
+  #update-bar.warn{background:#fdf8ec;border-bottom-color:#ecd9b0;color:#7a5b00}
+
+  /* 更新弹窗 */
+  dialog.update{
+    border:1px solid var(--c-line);border-radius:var(--r);padding:0;
+    width:420px;max-width:calc(100vw - 40px);
+    background:var(--c-surface);color:var(--c-ink);
+    box-shadow:0 8px 24px rgba(31,35,40,.14);
+  }
+  dialog.update::backdrop{background:rgba(31,35,40,.28)}
+  dialog.update h2{margin:0;padding:16px 18px 0;font-size:14px;font-weight:600}
+  dialog.update .body{padding:6px 18px 0}
+  dialog.update .sub{margin:4px 0 0;font-size:12px;color:var(--c-ink3)}
+  dialog.update ul{margin:8px 0 0;padding-left:17px;color:var(--c-ink2);font-size:12.5px;line-height:1.8}
+  dialog.update li{margin:2px 0}
+  dialog.update .foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px 16px}
+
+  /* 人脸提示 */
+  .notice{
+    border:1px solid #ecd9b0;background:#fdf8ec;border-radius:var(--r);
+    padding:10px 12px;font-size:12.5px;color:#7a5b00;margin-bottom:10px;
+  }
+  .notice b{display:block;margin-bottom:4px}
+  .notice .btn{margin-top:8px}
+
+  /* 折叠区 */
+  details.block{border:1px solid var(--c-line);border-radius:var(--r);background:var(--c-surface);margin-bottom:10px}
+  details.block > summary{padding:9px 12px;font-size:12px;font-weight:600;color:var(--c-ink2);cursor:pointer}
+  details.block > .inner{padding:0 12px 12px}
+
+  .hint{font-size:11.5px;color:var(--c-ink3);margin:6px 0 0;line-height:1.7}
+
+  /* 设置页改动提示条：贴顶，不用滚到底就能保存 */
+  .save-bar{
+    position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:8px;
+    margin:0 0 10px;padding:8px 12px;
+    background:var(--c-primary-soft);border:1px solid #cfdcf8;border-radius:var(--r);
+    font-size:12px;color:var(--c-primary);
+  }
+  .save-bar[hidden]{display:none}
+  .save-bar .spacer{flex:1}
+  ul.dots{margin:6px 0 0;padding-left:16px;font-size:12px;color:var(--c-ink2);line-height:1.8}
+  ul.dots li{margin:2px 0}
+
+  @media (max-width:1000px){
+    .app{grid-template-columns:200px minmax(0,1fr)}
+    /* 窄屏不再隐藏日志，改成右侧抽屉：点「日志」按钮或按 Esc 开合。
+       原来直接 display:none，用户既看不到进度也看不到报错。 */
+    .logs{
+      position:fixed;top:0;right:0;bottom:0;z-index:40;
+      width:min(360px,88vw);
+      border-left:1px solid var(--c-line);
+      box-shadow:-4px 0 16px rgba(31,35,40,.14);
+      transform:translateX(0);transition:transform var(--dur) ease;
+    }
+    .app.nologs .logs{transform:translateX(100%);box-shadow:none}
+    .grid3{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="nav">
+    <div class="nav-brand">超星 AI 答题<small>学习通任务助手</small></div>
+    <button class="nav-item" data-page="overview" aria-current="page">概览</button>
+    <button class="nav-item" data-page="exams">考试</button>
+    <button class="nav-item" data-page="library">题库</button>
+    <button class="nav-item" data-page="settings">设置</button>
+    <div class="nav-foot">
+      <div id="nav-account">未配置账号</div>
+      <div id="nav-version">—</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div id="update-bar" hidden>
+      <span id="update-text"></span>
+      <button class="btn text" id="update-now">立即更新</button>
+      <button class="btn text" id="update-close">稍后</button>
+    </div>
+
+    <header class="toolbar">
+      <span class="status"><span class="dot" id="status-dot"></span><span id="status-text">空闲</span></span>
+      <span class="spacer"></span>
+      <span id="msg"></span>
+      <button class="btn primary" id="btnStart">开始运行<kbd>Ctrl+↵</kbd></button>
+      <button class="btn" id="btnStop" disabled title="没有正在运行的任务">停止</button>
+      <button class="btn" id="btnLogs" title="显示/隐藏日志面板">日志</button>
+    </header>
+
+    <div class="content">
+      <!-- 概览 -->
+      <section class="page on" id="page-overview">
+        <h1 class="page-title">概览</h1>
+        <p class="page-sub">正在进行的章节会排在前面，完成后回到原来的位置。</p>
+
+        <div class="stat-row">
+          <div class="stat"><div class="k">进行中</div><div class="v run" id="st-running">0</div></div>
+          <div class="stat"><div class="k">已完成</div><div class="v ok" id="st-done">0</div></div>
+          <div class="stat"><div class="k">失败</div><div class="v bad" id="st-error">0</div></div>
+          <div class="stat"><div class="k">任务点</div><div class="v" id="st-jobs">0 / 0</div></div>
+        </div>
+
+        <div id="chapters"></div>
+      </section>
+
+      <!-- 考试 -->
+      <section class="page" id="page-exams">
+        <h1 class="page-title">考试</h1>
+        <p class="page-sub">先查题库，未命中再问模型；主观题会生成参考答案但不自动提交。需要验证码的考试，请先在平台上点开考试，再回来点「接管」。</p>
+
+        <div class="row" style="margin-bottom:10px">
+          <button class="btn" id="btnExamRefresh">刷新考试列表</button>
+          <span class="hint" id="exam-hint" style="margin:0"></span>
+        </div>
+
+        <div class="notice" id="face-card" hidden>
+          <b>这场考试需要人脸验证</b>
+          请在你自己的学习通客户端或浏览器里完成验证（程序不会代做）。完成后点下面按钮继续答题。
+          <br><button class="btn primary" id="btnFaceDone">我已完成验证</button>
+        </div>
+
+        <div id="exam-list"></div>
+      </section>
+
+      <!-- 题库 -->
+      <section class="page" id="page-library">
+        <h1 class="page-title">题库</h1>
+        <p class="page-sub">只有「已确认」的答案会被直接复用；待验证的答案下轮仍会重新问模型。</p>
+
+        <div class="stat-row">
+          <div class="stat"><div class="k">本地题目</div><div class="v" id="lib-total">0</div></div>
+          <div class="stat"><div class="k">已确认</div><div class="v ok" id="lib-confirmed">0</div></div>
+          <div class="stat"><div class="k">待验证</div><div class="v run" id="lib-pending">0</div></div>
+          <div class="stat"><div class="k">已判错</div><div class="v bad" id="lib-wrong">0</div></div>
+        </div>
+
+        <div class="card">
+          <h3>本地题目</h3>
+          <div class="row" style="margin-bottom:10px">
+            <input class="input" id="lib-search" placeholder="按题干搜索">
+            <button class="btn" id="btnLibRefresh">刷新本地</button>
+          </div>
+          <div id="lib-list"></div>
+        </div>
+
+        <details class="block" id="remote-lib">
+          <summary>服务器题库（共享）<span id="remote-count" style="font-weight:400;color:var(--c-ink3)"></span></summary>
+          <div class="inner">
+            <div class="row" style="margin-bottom:10px">
+              <input class="input" id="remote-search" placeholder="按题干搜索">
+              <button class="btn" id="btnRemoteRefresh">刷新共享</button>
+            </div>
+            <div id="remote-list"></div>
+            <p class="hint">整卷全对收录的答案权重更高；部分正确的需要多人给出一致答案才会采用。</p>
+          </div>
+        </details>
+      </section>
+
+      <!-- 设置 -->
+      <section class="page" id="page-settings">
+        <h1 class="page-title">设置</h1>
+        <div class="save-bar" id="save-bar" hidden>
+          <span>有未保存的改动</span>
+          <span class="spacer"></span>
+          <button class="btn primary" id="btnSaveTop">保存配置</button>
+        </div>
+        <p class="page-sub">配置只保存在本机，不会上传到服务器。</p>
+
+        <div class="card">
+          <h3>学习通账号</h3>
+          <div class="grid2">
+            <label class="field"><span>手机号</span><input class="input" id="username" placeholder="登录手机号" autocomplete="username"></label>
+            <label class="field"><span>密码</span><input class="input" type="password" id="password" placeholder="登录密码" autocomplete="current-password"></label>
+          </div>
+          <label class="field"><span>补充课程 ID（可选，逗号分隔；留空且不勾选会刷全部课程）</span><input class="input" id="manual_ids" placeholder="例如 268309938"></label>
+          <button class="btn" id="btnCourses">拉取课程列表</button>
+          <div id="courses" style="margin-top:10px"></div>
+        </div>
+
+        <div class="card">
+          <h3>大模型</h3>
+          <label class="field"><span>接口地址（OpenAI 兼容）</span><input class="input" id="endpoint" value="https://api.deepseek.com"></label>
+          <div class="grid2">
+            <label class="field"><span>API Key</span><input class="input" type="password" id="api_key" placeholder="sk-..."></label>
+            <label class="field"><span>模型</span><div class="row"><select class="select" id="model"><option value="">先获取模型</option></select><button class="btn" id="btnModels">获取模型</button></div></label>
+          </div>
+          <div class="grid2">
+            <label class="field"><span>视觉模型（带配图题用，留空关闭）</span><select class="select" id="vision_model"><option value="">不使用</option></select></label>
+            <label class="field"><span>思考强度（刷课与考试通用，越高越慢越准）</span>
+              <select class="select" id="reasoning_effort">
+                <option value="">关闭</option>
+                <option value="low">低</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+              </select>
+            </label>
+          </div>
+          <button class="btn" id="btnTest">测试连接</button>
+        </div>
+
+        <div class="card">
+          <h3>运行参数</h3>
+          <div class="grid3">
+            <label class="field"><span>视频倍速（1–2）</span><input class="input" type="number" id="speed" value="1.5" min="1" max="2" step="0.5"></label>
+            <label class="field"><span>同时处理的章节数（1–4）</span><input class="input" type="number" id="jobs" value="2" min="1" max="4"></label>
+            <label class="field"><span>请求间隔（秒）</span><input class="input" type="number" id="min_interval" value="2" min="0" max="30"></label>
+          </div>
+          <label class="field"><span>遇到未开放的任务点</span>
+            <select class="select" id="notopen_action"><option value="retry">重试</option><option value="continue">跳过继续</option></select>
+          </label>
+          <label class="check"><input type="checkbox" id="submit" checked>覆盖率达标准后自动提交答案</label>
+          <label class="check"><input type="checkbox" id="work_redo_enabled">答错后自动重做章节检测</label>
+        </div>
+
+        <div class="card">
+          <h3>版本与更新</h3>
+          <div class="row">
+            <span class="hint" style="margin:0">当前版本 <b id="ver-current">—</b></span>
+            <span class="spacer" style="flex:1"></span>
+            <button class="btn" id="btnCheckUpdate">检查更新</button>
+          </div>
+          <div class="hint" id="update-info"></div>
+          <details class="block" style="margin:10px 0 0;box-shadow:none">
+            <summary>本版更新内容</summary>
+            <div class="inner"><ul class="dots" id="ver-changelog"></ul></div>
+          </details>
+        </div>
+
+        <div class="card">
+          <h3>保存</h3>
+          <button class="btn primary" id="btnSave">保存配置<kbd>Ctrl+S</kbd></button>
+          <p class="hint">密码和 Key 留空表示沿用上次保存的值。</p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <aside class="logs" id="logs-panel">
+    <div class="logs-head">
+      <span>日志</span>
+      <span class="spacer"></span>
+      <button class="btn text" id="btnLogClear">清空</button>
+      <button class="btn text" id="btnSysOnly">只看系统</button>
+    </div>
+    <div id="logs"></div>
+  </aside>
+</div>
+
+<dialog class="update" id="update-dialog">
+  <h2 id="update-title">发现新版本</h2>
+  <div class="body">
+    <p class="sub" id="update-sub"></p>
+    <ul id="update-list"></ul>
+  </div>
+  <div class="foot">
+    <button class="btn" id="update-later">稍后</button>
+    <button class="btn primary" id="update-go">立即更新</button>
+  </div>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const SEP = '\x1f';
+const MAX_LINES = 2000;
+
+const STATE_LABEL = {
+  pending: '等待中', running: '进行中', confirming: '等待平台确认',
+  done: '已完成', error: '失败', notopen: '未开放'
+};
+const LEVEL_LABEL = {TRACE:'跟踪', DEBUG:'调试', INFO:'信息', WARNING:'警告', ERROR:'错误', CRITICAL:'严重'};
+
+let since = 0, pollFails = 0, sysOnly = false, chapSeq = 0;
+const chapMap = new Map();
+let examCourses = [], examTimer = null, pendingUpdate = null;
+let savedCourseIds = [];   // 已保存的课程，用来恢复勾选状态，不回填手填框
+
+/* ---------- 导航 ---------- */
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.onclick = () => switchPage(btn.dataset.page);
+});
+
+function switchPage(page) {
+  document.querySelectorAll('.nav-item').forEach(b =>
+    b.setAttribute('aria-current', b.dataset.page === page ? 'page' : 'false'));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('on', p.id === 'page-' + page));
+  if (page === 'library') loadLibrary();
+  if (page === 'exams' && !examCourses.length) loadExams();
+}
+
+/* ---------- 通用 ---------- */
+function setMsg(text, kind) {
+  const el = $('msg');
+  el.textContent = text || '';
+  el.className = kind || '';
+}
+
+function emptyState(text, hint, retryFn) {
+  const box = document.createElement('div');
+  box.className = 'state';
+  box.textContent = text;
+  if (hint) {
+    const h = document.createElement('span');
+    h.className = 'hint';
+    h.textContent = hint;
+    box.appendChild(h);
+  }
+  if (retryFn) {
+    const b = document.createElement('button');
+    b.className = 'btn retry';
+    b.textContent = '重试';
+    b.onclick = retryFn;
+    box.appendChild(b);
+  }
+  return box;
+}
+
+function errorState(text, retryFn) {
+  const box = emptyState(text, '', retryFn);
+  box.className = 'state error';
+  return box;
+}
+
+async function post(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body || {})
+  });
+  let data = {};
+  try { data = await r.json(); } catch (e) {}
+  if (!r.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + r.status));
+  return data;
+}
+
+function courseListForSave(checked, ids) {
+  // 课程列表还没渲染时（没点「获取课程」），勾选状态无从得知，
+  // 这时沿用手上已有的课程，别把用户选好的课悄悄清空。
+  const rendered = document.querySelectorAll('#courses input').length > 0;
+  const base = rendered ? checked : savedCourseIds;
+  return [...new Set([...base, ...ids])];
+}
+
+function formData() {
+  const ids = $('manual_ids').value.split(/[,，\s]+/).filter(Boolean);
+  const checked = [...document.querySelectorAll('#courses input:checked')].map(x => x.value);
+  return {
+    username: $('username').value.trim(),
+    password: $('password').value,
+    api_key: $('api_key').value.trim(),
+    endpoint: $('endpoint').value.trim(),
+    model: $('model').value,
+    vision_model: $('vision_model').value,
+    reasoning_effort: $('reasoning_effort').value,
+    speed: parseFloat($('speed').value) || 1,
+    jobs: parseInt($('jobs').value, 10) || 2,
+    min_interval: parseInt($('min_interval').value, 10) || 0,
+    notopen_action: $('notopen_action').value,
+    submit: $('submit').checked,
+    work_redo_enabled: $('work_redo_enabled').checked,
+    course_list: courseListForSave(checked, ids)
+  };
+}
+
+/* ---------- 日志面板 ---------- */
+function logLine(item) {
+  const div = document.createElement('div');
+  const lv = LEVEL_LABEL[item.lv] || '';
+  div.textContent = '[' + item.t + ']' + (lv ? ' ' + lv + '：' : ' ') + item.m;
+  if (item.lv === 'ERROR') div.className = 'err';
+  else if (item.lv === 'WARNING') div.className = 'warn';
+  else if (/(完成|成功|正确)/.test(item.m)) div.className = 'ok';
+  return div;
+}
+
+function trimLines(box) {
+  while (box.childElementCount > MAX_LINES) box.removeChild(box.firstChild);
+}
+
+function appendLog(item) {
+  if (sysOnly && item.ch) return;
+  const box = $('logs');
+  const lv = LEVEL_LABEL[item.lv] || '';
+  const text = '[' + item.t + ']' + (lv ? ' ' + lv + '：' : ' ') + item.m;
+  const last = box.lastElementChild;
+  if (item.kind === 'progress' && last && last.dataset.kind === 'progress') {
+    last.textContent = text;
+    return;
+  }
+  const el = logLine(item);
+  if (item.kind === 'progress') el.dataset.kind = 'progress';
+  box.appendChild(el);
+  trimLines(box);
+  box.scrollTop = box.scrollHeight;
+}
+
+// 窄屏下日志默认收起，点「日志」按钮拉出来
+if (window.innerWidth <= 1000) $('app').classList.add('nologs');
+$('btnLogs').onclick = () => $('app').classList.toggle('nologs');
+// 设置页里按 Enter 等同于保存（输入框内），符合桌面表单习惯
+document.querySelectorAll('#page-settings input').forEach(el => {
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); $('btnSave').click(); }
+  });
+});
+
+$('btnLogClear').onclick = () => {
+  if (!$('logs').childElementCount) return;
+  if (!confirm('清空当前日志？清空后无法恢复。')) return;
+  $('logs').innerHTML = '';
+};
+$('btnSysOnly').onclick = () => {
+  sysOnly = !sysOnly;
+  $('btnSysOnly').textContent = sysOnly ? '显示全部' : '只看系统';
+  $('logs').innerHTML = '';
+  since = 0;
+};
+
+/* ---------- 章节列表 ---------- */
+function splitKey(key) {
+  const i = key.indexOf(SEP);
+  return i < 0 ? {course: '', name: key} : {course: key.slice(0, i), name: key.slice(i + 1)};
+}
+
+function ensureChap(key, name, course) {
+  if (chapMap.has(key)) {
+    const rec = chapMap.get(key);
+    if (name) { rec.nameEl.textContent = name; rec.courseEl.textContent = course || ''; }
+    return rec;
+  }
+  const row = document.createElement('div');
+  row.className = 'list-row';
+  row.innerHTML =
+    '<span class="name"><small class="course"></small><span class="title"></span></span>' +
+    '<span class="bar"><i></i></span>' +
+    '<span class="meta"></span>';
+  const rec = {
+    row,
+    nameEl: row.querySelector('.title'),
+    courseEl: row.querySelector('.course'),
+    bar: row.querySelector('.bar i'),
+    meta: row.querySelector('.meta'),
+    baseOrder: chapSeq++
+  };
+  rec.nameEl.textContent = name || key;
+  rec.courseEl.textContent = (course || '') + (course ? ' / ' : '');
+  row.dataset.base = String(rec.baseOrder);
+  row.dataset.state = 'pending';
+  $('chapters').appendChild(row);
+  chapMap.set(key, rec);
+  return rec;
+}
+
+function ensureList() {
+  let box = $('chapters').querySelector('.list');
+  if (!box) {
+    $('chapters').innerHTML = '';
+    box = document.createElement('div');
+    box.className = 'list';
+    box.style.display = 'flex';
+    box.style.flexDirection = 'column';
+    $('chapters').appendChild(box);
+  }
+  return box;
+}
+
+function updateChap(c) {
+  const key = c.key || c.name;
+  ensureList();
+  const rec = ensureChap(key, c.name, c.course);
+  const state = c.state || 'pending';
+  ['done', 'error', 'notopen'].forEach(k => rec.row.classList.toggle(k, state === k));
+  const total = c.total || 0, done = c.done || 0;
+  let pct = c.pct || 0;
+  if (total > 0 && c.video_pct && done < total && (state === 'running' || state === 'confirming')) {
+    pct = Math.round(((done + c.video_pct / 100) / total) * 100);
+  }
+  rec.bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  let text = STATE_LABEL[state] || state;
+  if (total) text += ' ' + done + '/' + total;
+  if (c.video_total && state !== 'done' && state !== 'error') text += ' · ' + (c.video_pct || 0) + '%';
+  rec.meta.textContent = text;
+  // 正在跑的置顶；多个任务同时跑时，最近有动静的排最前
+  const active = state === 'running' || state === 'confirming';
+  rec.row.dataset.state = state;
+  reorderChapters();
+}
+
+function reorderChapters() {
+  const box = chapters.querySelector('.list');
+  if (!box) return;
+  const rows = Array.from(box.children);
+  const want = rows.slice().sort((a, b) => {
+    const aa = a.dataset.state === 'running' || a.dataset.state === 'confirming';
+    const ba = b.dataset.state === 'running' || b.dataset.state === 'confirming';
+    if (aa !== ba) return aa ? -1 : 1;
+    return Number(a.dataset.base || 0) - Number(b.dataset.base || 0);
+  });
+  // 顺序没变就不动 DOM，避免每秒重排造成闪烁
+  if (want.every((r, i) => r === rows[i])) return;
+  want.forEach(r => box.appendChild(r));
+}
+
+function setStat(id, value) {
+  const el = $(id);
+  const text = String(value);
+  if (el.textContent !== text) el.textContent = text;
+}
+
+function updateStats(chapters) {
+  let running = 0, done = 0, error = 0, jobsDone = 0, jobsTotal = 0;
+  chapters.forEach(c => {
+    if (c.state === 'running' || c.state === 'confirming') running++;
+    else if (c.state === 'done') done++;
+    else if (c.state === 'error') error++;
+    jobsDone += c.done || 0;
+    jobsTotal += c.total || 0;
+  });
+  setStat('st-running', running);
+  setStat('st-done', done);
+  setStat('st-error', error);
+  setStat('st-jobs', jobsDone + ' / ' + jobsTotal);
+
+  if (!chapters.length) {
+    const box = $('chapters');
+    if (!box.querySelector('.state')) {
+      box.innerHTML = '';
+      box.appendChild(emptyState('还没有任务数据', '到「设置」填好账号和模型，再点右上角「开始运行」。'));
+    }
+  }
+}
+
+function resetView(keepSince) {
+  if (!keepSince) since = 0;
+  chapMap.clear();
+  chapSeq = 0;
+  $('chapters').innerHTML = '';
+  $('logs').innerHTML = '';
+}
+
+/* ---------- 任务轮询 ---------- */
+async function poll() {
+  try {
+    const r = await fetch('/api/logs?since=' + since);
+    const d = await r.json();
+    (d.chapters || []).forEach(updateChap);
+    (d.items || []).forEach(appendLog);
+    if (d.items && d.items.length) since = d.items[d.items.length - 1].n;
+    updateStats(d.chapters || []);
+
+    const dot = $('status-dot'), txt = $('status-text'), stop = $('btnStop');
+    dot.className = 'dot';
+    if (d.status === 'running') {
+      dot.classList.add('run'); txt.textContent = '运行中';
+      stop.disabled = false; stop.title = ''; $('btnStart').disabled = true;
+    } else if (d.status === 'finished') {
+      txt.textContent = '已完成'; stop.disabled = true; stop.title = '没有正在运行的任务';
+      $('btnStart').disabled = false;
+    } else if (d.status === 'stopped') {
+      txt.textContent = '已停止'; stop.disabled = true; stop.title = '没有正在运行的任务';
+      $('btnStart').disabled = false;
+    } else if (d.status === 'error') {
+      dot.classList.add('err'); txt.textContent = '异常退出 (' + d.exit_code + ')';
+      stop.disabled = true; stop.title = '没有正在运行的任务'; $('btnStart').disabled = false;
+    } else {
+      txt.textContent = '空闲'; stop.disabled = true; stop.title = '没有正在运行的任务';
+      $('btnStart').disabled = false;
+    }
+    pollFails = 0;
+  } catch (e) {
+    pollFails++;
+    if (pollFails >= 3) {
+      $('status-dot').className = 'dot err';
+      $('status-text').textContent = '连接中断';
+    }
+  }
+}
+
+/* ---------- 设置页动作 ---------- */
+
+$('btnCourses').onclick = async () => {
+  const box = $('courses');
+  box.innerHTML = '';
+  box.appendChild(emptyState('正在登录并拉取课程…'));
+  setMsg('');
+  try {
+    const d = await post('/api/courses', {username: $('username').value.trim(), password: $('password').value});
+    if (!d.courses.length) {
+      box.innerHTML = '';
+      box.appendChild(emptyState('账号下没有课程'));
+      return;
+    }
+    const list = document.createElement('div');
+    list.className = 'list';
+    d.courses.forEach(c => {
+      const row = document.createElement('label');
+      row.className = 'list-row';
+      row.style.cursor = 'pointer';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = c.id; cb.style.margin = '0';
+      if (savedCourseIds.indexOf(String(c.id)) >= 0) cb.checked = true;
+      cb.addEventListener('change', () => {
+        const picked = document.querySelectorAll('#courses input:checked');
+        if (picked.length > 4) {
+          cb.checked = false;
+          setMsg('最多同时选择 4 门课程', 'err');
+          return;
+        }
+      });
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = c.title + '（' + c.id + '）';
+      row.appendChild(cb);
+      row.appendChild(name);
+      list.appendChild(row);
+    });
+    box.innerHTML = '';
+    box.appendChild(list);
+    setMsg(d.message, 'ok');
+  } catch (e) {
+    box.innerHTML = '';
+    box.appendChild(errorState('拉取失败：' + e.message, () => $('btnCourses').click()));
+  }
+};
+
+$('btnModels').onclick = async () => {
+  setMsg('正在获取模型列表…');
+  try {
+    const d = await post('/api/models', {api_key: $('api_key').value.trim(), endpoint: $('endpoint').value.trim()});
+    const fill = (id, keepEmpty, emptyText) => {
+      const el = $(id);
+      el.innerHTML = '';
+      if (keepEmpty) {
+        const o = document.createElement('option');
+        o.value = ''; o.textContent = emptyText;
+        el.appendChild(o);
+      }
+      d.models.forEach(m => {
+        const o = document.createElement('option');
+        o.value = m; o.textContent = m;
+        el.appendChild(o);
+      });
+    };
+    fill('model', false, '');
+    fill('vision_model', true, '不使用');
+    const prefer = d.models.find(m => /deepseek-chat|qwen|gpt-4o|glm-4/i.test(m));
+    if (prefer) $('model').value = prefer;
+    setMsg('共 ' + d.models.length + ' 个模型', 'ok');
+  } catch (e) {
+    setMsg('获取失败：' + e.message, 'err');
+  }
+};
+
+$('btnTest').onclick = async () => {
+  setMsg('正在测试连接…');
+  try {
+    const d = await post('/api/test-llm', {
+      api_key: $('api_key').value.trim(),
+      endpoint: $('endpoint').value.trim(),
+      model: $('model').value
+    });
+    setMsg(d.message, 'ok');
+  } catch (e) {
+    setMsg('连接失败：' + e.message, 'err');
+  }
+};
+
+function markDirty(on) {
+  const bar = $('save-bar');
+  if (bar) bar.hidden = !on;
+}
+document.querySelectorAll('#page-settings input, #page-settings select').forEach(el => {
+  el.addEventListener('change', () => markDirty(true));
+  el.addEventListener('input', () => markDirty(true));
+});
+$('btnSaveTop').onclick = () => $('btnSave').click();
+
+$('btnSave').onclick = async () => {
+  try {
+    const d = await post('/api/config', formData());
+    setMsg(d.message, 'ok');
+    markDirty(false);
+  } catch (e) {
+    setMsg('保存失败：' + e.message, 'err');
+  }
+};
+
+$('btnStart').onclick = async () => {
+  // 课程列表为空时后端会刷全部课程，这件事必须让用户明确知道
+  const picked = document.querySelectorAll('#courses input:checked').length;
+  const typed = $('manual_ids').value.split(/[,，\s]+/).filter(Boolean).length;
+  const cfg = await fetch('/api/config').then(r => r.json()).catch(() => ({}));
+  const saved = (cfg.course_list || []).length;
+  if (!picked && !typed && !saved) {
+    if (!confirm('没有选择任何课程。继续的话会刷这个账号下的**全部课程**。\n\n确定要开始吗？')) return;
+  }
+  setMsg('正在启动…');
+  try {
+    resetView(false);
+    const d = await post('/api/start', formData());
+    setMsg('已启动，进程 ' + d.pid, 'ok');
+    switchPage('overview');
+  } catch (e) {
+    setMsg('启动失败：' + e.message, 'err');
+    // 缺配置时直接把用户送到该去的地方，而不是只丢一句报错
+    if (/请填写|请先在设置里/.test(e.message)) {
+      switchPage('settings');
+      setMsg('启动失败：' + e.message + '（已切到设置页）', 'err');
+    }
+  }
+};
+
+$('btnStop').onclick = async () => {
+  try {
+    const d = await post('/api/stop');
+    setMsg(d.message, 'ok');
+  } catch (e) {
+    setMsg('停止失败：' + e.message, 'err');
+  }
+};
+
+/* ---------- 考试 ---------- */
+async function loadExams() {
+  const box = $('exam-list');
+  box.innerHTML = '';
+  box.appendChild(emptyState('正在读取考试列表…'));
+  $('exam-hint').textContent = '';
+  try {
+    const r = await post('/api/exams', {
+      username: $('username').value.trim(),
+      password: $('password').value
+    });
+    examCourses = r.courses || [];
+    if (!examCourses.length) {
+      box.innerHTML = '';
+      box.appendChild(emptyState('没有找到已发布的考试', '课程考试发布后会出现在这里。', loadExams));
+      return;
+    }
+    $('exam-hint').textContent = '共 ' + r.total + ' 场';
+    box.innerHTML = '';
+    const list = document.createElement('div');
+    list.className = 'list';
+    examCourses.forEach(group => {
+      group.items.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'list-row';
+        const name = document.createElement('span');
+        name.className = 'name';
+        name.innerHTML = '<small></small><span></span>';
+        name.querySelector('small').textContent = group.course + ' / ';
+        name.querySelector('span').textContent = item.name;
+        const meta = document.createElement('span');
+        meta.className = 'meta';
+        meta.textContent = [item.status, item.expire].filter(Boolean).join(' · ') || '—';
+        const actions = document.createElement('span');
+        actions.className = 'actions';
+        const finished = item.status === '已完成' || item.status === '已批阅';
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.textContent = finished ? '重考' : '开始';
+        btn.title = '打开考试窗口：你过验证码，程序自动答题';
+        btn.onclick = () => openExamBrowser(group, item, btn, finished ? 'retake' : 'start');
+        actions.appendChild(btn);
+        row.appendChild(name); row.appendChild(meta); row.appendChild(actions);
+        list.appendChild(row);
+      });
+    });
+    box.appendChild(list);
+  } catch (e) {
+    box.innerHTML = '';
+    box.appendChild(errorState('读取失败：' + e.message, loadExams));
+  }
+}
+
+async function openExamBrowser(group, item, btn, mode) {
+  const tip = mode === 'retake'
+    ? '重考「' + item.name + '」？\n\n会打开考试窗口，你在里面点重考并完成验证码，之后程序自动答完整套卷子并交卷。重考次数会用掉一次。'
+    : '开始「' + item.name + '」？\n\n会打开考试窗口，你在里面点进入考试并完成验证码，之后程序自动答题、自动交卷。';
+  if (!confirm(tip)) return;
+  if (btn) { btn.disabled = true; btn.textContent = '打开中…'; }
+
+  const q = new URLSearchParams({
+    redo: 1, taskrefId: item.exam_id, courseId: group.courseId,
+    classId: group.clazzId, role: '', source: 0,
+    enc_task: item.enc_task || '', cpi: group.cpi, vx: 0, examsignal: 1
+  });
+  const url = 'https://mooc1.chaoxing.com/exam-ans/exam/phone/task-exam?' + q.toString();
+  try {
+    await post('/api/exam/browser', {url});
+    setMsg('考试窗口已打开：在里面点「进入考试」并完成验证码，程序会自动接手', 'warn');
+    $('exam-hint').textContent = '等待你在考试窗口里进入考场…';
+    $('app').classList.remove('nologs');
+    watchExamBrowser(group, item, btn);
+  } catch (e) {
+    alert('打开考试窗口失败：' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '开始'; }
+  }
+}
+
+function watchExamBrowser(group, item, btn) {
+  if (examTimer) clearInterval(examTimer);
+  let ticks = 0;
+  examTimer = setInterval(async () => {
+    ticks++;
+    if (ticks > 420) {
+      clearInterval(examTimer); examTimer = null;
+      $('exam-hint').textContent = '等待超时，未检测到进入考场';
+      return;
+    }
+    try {
+      const r = await fetch('/api/exam/browser');
+      const d = await r.json();
+      if (!d.enc) return;
+      clearInterval(examTimer); examTimer = null;
+      $('exam-hint').textContent = '已进入考场，开始自动答题…';
+      setMsg('已接手考试，正在答题', 'ok');
+      await post('/api/exam/autodrive', {});
+      startExamPolling();
+    } catch (e) {}
+  }, 1000);
+}
+
+function startExamPolling() {
+  if (examTimer) clearInterval(examTimer);
+  examTimer = setInterval(async () => {
+    try {
+      const r = await fetch('/api/exam/status');
+      const d = await r.json();
+      $('face-card').hidden = d.status !== 'waiting_face';
+      if (d.status === 'running') $('exam-hint').textContent = '答题中，已提交 ' + d.answered + ' 题';
+      if (d.status === 'done') {
+        clearInterval(examTimer); examTimer = null;
+        if (d.submitted) {
+          $('exam-hint').textContent = '已交卷，共提交 ' + d.answered + ' 题';
+          setMsg('考试已交卷', 'ok');
+        } else {
+          $('exam-hint').textContent = '未交卷，已作答 ' + d.answered + ' 题，请到平台手动完成并提交';
+          setMsg('考试未交卷，需要你手动处理', 'warn');
+        }
+        setTimeout(loadExams, 800);
+      }
+      if (d.status === 'error') {
+        clearInterval(examTimer); examTimer = null;
+        $('exam-hint').textContent = '已中断';
+        setMsg('考试中断：' + d.error, 'err');
+        setTimeout(loadExams, 800);
+      }
+    } catch (e) {}
+  }, 1500);
+}
+
+$('btnExamRefresh').onclick = loadExams;
+$('btnFaceDone').onclick = async () => {
+  try {
+    await post('/api/exam/face_done', {});
+    $('face-card').hidden = true;
+  } catch (e) {
+    alert('提交失败：' + e.message);
+  }
+};
+
+/* ---------- 题库 ---------- */
+async function loadLibrary() {
+  const box = $('lib-list');
+  box.innerHTML = '';
+  box.appendChild(emptyState('正在读取…'));
+  try {
+    const kw = $('lib-search').value.trim();
+    const r = await fetch('/api/library?q=' + encodeURIComponent(kw));
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || '读取失败');
+    $('lib-total').textContent = d.stats.total;
+    $('lib-confirmed').textContent = d.stats.confirmed;
+    $('lib-pending').textContent = d.stats.pending;
+    $('lib-wrong').textContent = d.stats.wrong;
+
+    box.innerHTML = '';
+    if (!d.items.length) {
+      box.appendChild(emptyState('还没有题目', '跑一次带章节测验的任务后，答过的题会出现在这里。'));
+      return;
+    }
+    const list = document.createElement('div');
+    list.className = 'list';
+    const statusMap = {0: '待验证', 1: '已确认', 2: '已判错'};
+    d.items.forEach(it => {
+      const row = document.createElement('div');
+      row.className = 'list-row';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.innerHTML = '<small></small><span></span>';
+      name.querySelector('small').textContent = statusMap[it.status] || '';
+      name.querySelector('span').textContent = it.title.slice(0, 60);
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = '答案：' + (it.answer || '—');
+      const actions = document.createElement('span');
+      actions.className = 'actions';
+      const btn = document.createElement('button');
+      btn.className = 'btn text';
+      btn.textContent = '删除';
+      btn.onclick = async () => {
+        if (!confirm('删除这道题？')) return;
+        try {
+          await post('/api/library/delete', {fingerprint: it.fingerprint});
+          loadLibrary();
+        } catch (err) { setMsg('删除失败：' + err.message, 'err'); }
+      };
+      actions.appendChild(btn);
+      row.appendChild(name); row.appendChild(meta); row.appendChild(actions);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+  } catch (e) {
+    box.innerHTML = '';
+    box.appendChild(errorState('读取失败：' + e.message, loadLibrary));
+  }
+}
+
+async function loadRemoteLibrary() {
+  const box = $('remote-list');
+  box.innerHTML = '';
+  box.appendChild(emptyState('正在读取服务器题库…'));
+  try {
+    const kw = $('remote-search').value.trim();
+    const r = await fetch('/api/library/remote?q=' + encodeURIComponent(kw));
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || '服务器题库暂不可用');
+    $('remote-count').textContent = ' · 共 ' + d.total + ' 题';
+    box.innerHTML = '';
+    if (!d.items.length) {
+      box.appendChild(emptyState('服务器题库还没有题目'));
+      return;
+    }
+    const list = document.createElement('div');
+    list.className = 'list';
+    const statusMap = {0: '有争议', 1: '已收录'};
+    d.items.forEach(it => {
+      const row = document.createElement('div');
+      row.className = 'list-row';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.innerHTML = '<small></small><span></span>';
+      name.querySelector('small').textContent = (statusMap[it.status] || '') +
+        (it.votes ? ' ' + it.votes + ' 票' : '');
+      name.querySelector('span').textContent = (it.title || '').slice(0, 60);
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = '答案：' + (it.answer || '—');
+      row.appendChild(name); row.appendChild(meta);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+  } catch (e) {
+    box.innerHTML = '';
+    box.appendChild(errorState('读取失败：' + e.message, loadRemoteLibrary));
+  }
+}
+
+$('btnLibRefresh').onclick = loadLibrary;
+$('lib-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadLibrary(); });
+$('btnRemoteRefresh').onclick = loadRemoteLibrary;
+$('remote-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadRemoteLibrary(); });
+$('remote-lib').addEventListener('toggle', e => { if (e.target.open) loadRemoteLibrary(); });
+
+/* ---------- 自动更新 ---------- */
+function fillList(el, items) {
+  el.innerHTML = '';
+  items.forEach(text => {
+    const li = document.createElement('li');
+    li.textContent = text;
+    el.appendChild(li);
+  });
+}
+
+function showUpdateDialog(d) {
+  pendingUpdate = d;
+  $('update-title').textContent = '发现新版本 ' + d.version;
+  $('update-sub').textContent = '当前 ' + d.current + '，更新完成后程序会自动重启';
+  fillList($('update-list'), (d.highlights && d.highlights.length) ? d.highlights : [d.notes || '细节修复与优化']);
+  if ($('update-dialog').open) return;
+  sessionStorage.setItem('updateShown', d.version);
+  $('update-dialog').showModal();
+}
+
+async function applyUpdate(source) {
+  if (!pendingUpdate) return;
+  const btn = $(source);
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '下载中…';
+  $('update-text').textContent = '正在下载更新包，完成后程序会自动重启…';
+  $('update-bar').hidden = false;
+  try {
+    const res = await post('/api/update/apply', {url: pendingUpdate.url, sha256: pendingUpdate.sha256});
+    $('update-text').textContent = res.message;
+    if ($('update-dialog').open) $('update-dialog').close();
+  } catch (e) {
+    $('update-text').textContent = '更新失败：' + e.message + '（已保留当前版本）';
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+async function checkUpdateSilently() {
+  try {
+    const r = await fetch('/api/update/check');
+    const d = await r.json();
+
+    if (d.current) $('ver-current').textContent = d.current;
+    if (d.current_changelog && d.current_changelog.length && !$('ver-changelog').children.length) {
+      fillList($('ver-changelog'), d.current_changelog);
+    }
+
+    if (d.last_failure) {
+      $('update-text').textContent = '上次更新没有完成，已保留当前版本';
+      $('update-bar').classList.add('warn');
+      $('update-bar').hidden = false;
+      $('update-now').hidden = true;
+      $('update-close').textContent = '知道了';
+      $('update-close').onclick = () => { $('update-bar').hidden = true; };
+      return;
+    }
+    if (!d.ok || !d.has_update) return;
+
+    pendingUpdate = d;
+    $('update-text').textContent = '发现新版本 ' + d.version;
+    $('update-bar').hidden = false;
+
+    // 同一次打开期间已经弹过就不再打扰
+    // 不自动弹模态：只在顶部条提示，用户主动点「立即更新」才展开
+  } catch (e) {}
+}
+
+$('update-close').onclick = () => { $('update-bar').hidden = true; };
+$('update-now').onclick = () => applyUpdate('update-now');
+$('update-go').onclick = () => applyUpdate('update-go');
+$('update-later').onclick = () => { $('update-dialog').close(); };
+$('update-dialog').addEventListener('cancel', () => { $('update-dialog').close(); });
+$('btnCheckUpdate').onclick = async () => {
+  $('update-info').textContent = '正在检查更新…';
+  try {
+    const r = await fetch('/api/update/check');
+    const d = await r.json();
+    if (d.current) $('ver-current').textContent = d.current;
+    if (d.current_changelog) fillList($('ver-changelog'), d.current_changelog);
+    if (!d.ok) { $('update-info').textContent = d.error || '检查失败'; return; }
+    if (!d.has_update) { $('update-info').textContent = '已是最新版本'; return; }
+    $('update-info').textContent = '发现新版本 ' + d.version;
+    showUpdateDialog(d);
+  } catch (e) {
+    $('update-info').textContent = '检查失败：' + e.message;
+  }
+};
+
+/* ---------- 快捷键 ---------- */
+document.addEventListener('keydown', e => {
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && e.key === 'Enter') { e.preventDefault(); if (!$('btnStart').disabled) $('btnStart').click(); }
+  if (ctrl && e.key.toLowerCase() === 's') { e.preventDefault(); $('btnSave').click(); }
+  if (ctrl && ['1','2','3','4'].includes(e.key)) {
+    e.preventDefault();
+    switchPage(['overview','exams','library','settings'][Number(e.key) - 1]);
+  }
+  if (e.key === 'Escape') $('app').classList.add('nologs');
+});
+
+/* ---------- 初始化 ---------- */
+(async function init() {
+  try {
+    const r = await fetch('/api/config');
+    const c = await r.json();
+    if (c.username) { $('username').value = c.username; $('nav-account').textContent = c.username; }
+    if (c.speed) $('speed').value = c.speed;
+    if (c.jobs) $('jobs').value = c.jobs;
+    if (c.endpoint) $('endpoint').value = c.endpoint;
+    if (c.notopen_action) $('notopen_action').value = c.notopen_action;
+    if (c.reasoning_effort) $('reasoning_effort').value = c.reasoning_effort;
+    $('submit').checked = c.submit !== false;
+    $('work_redo_enabled').checked = !!c.work_redo_enabled;
+    if (c.model) {
+      const o = document.createElement('option');
+      o.value = c.model; o.textContent = c.model;
+      $('model').innerHTML = ''; $('model').appendChild(o);
+    }
+    if (c.vision_model) {
+      const o = document.createElement('option');
+      o.value = c.vision_model; o.textContent = c.vision_model;
+      $('vision_model').appendChild(o);
+      $('vision_model').value = c.vision_model;
+    }
+    savedCourseIds = (c.course_list || []).map(String);
+    if (c.has_key) $('api_key').placeholder = '已保存（尾号 ' + c.api_key_tail + '），留空沿用';
+    if (c.password_saved) $('password').placeholder = '已保存，留空沿用';
+    if (c.version) {
+      $('ver-current').textContent = c.version;
+      $('nav-version').textContent = 'v' + c.version;
+    }
+    $('nav-account').textContent = c.username || '未配置账号';
+  } catch (e) {}
+
+  poll();
+  setInterval(poll, 1000);
+  setTimeout(checkUpdateSilently, 3000);
+  setInterval(checkUpdateSilently, 6 * 3600 * 1000);
+})();
+</script>
+</body>
+</html>

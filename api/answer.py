@@ -15,9 +15,12 @@ from typing import Optional
 import httpx
 import requests
 from openai import OpenAI
+
+from .vision_helper import build_image_parts, strip_images
 from urllib3 import disable_warnings, exceptions
 
 from api.answer_check import check_answer
+from api.library import Library, fingerprint
 from api.logger import logger
 
 # 关闭警告
@@ -1169,6 +1172,7 @@ class AI(Tiku):
         """初始化AI大模型答题实现."""
         super().__init__(config_path)
         self.name = 'AI大模型答题'
+        self._library = Library()
         self.last_request_time = None
         self._lock = threading.Lock()
         self.work_feedback = None  # 章节检测错误反馈（重做时参考）
@@ -1204,10 +1208,31 @@ class AI(Tiku):
         )
 
     def _completion_kwargs(self, **kwargs):
+        """按设置决定要不要打开思考。
+
+        设置里选了思考强度就透传下去；没选时对 DeepSeek V4 仍然关掉 thinking
+        （它默认开着，会让 message.content 为空）。
+        """
+        effort = ""
+        if self._conf:
+            effort = str(self._conf.get("reasoning_effort", "") or "").strip()
+        if effort in ("low", "medium", "high"):
+            kwargs["reasoning_effort"] = effort
+            return kwargs
         if self._is_deepseek_v4():
-            # DeepSeek V4 defaults to thinking mode, which can leave message.content empty.
-            kwargs['extra_body'] = {'thinking': {'type': 'disabled'}}
+            kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
         return kwargs
+
+    def _create(self, client, **kwargs):
+        """统一发起请求。模型不认 reasoning_effort 时降级重试一次，别让答题全挂。"""
+        try:
+            return client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            if "reasoning_effort" not in kwargs:
+                raise
+            logger.warning(f"模型不接受 reasoning_effort，本次改用普通请求：{exc}")
+            kwargs.pop("reasoning_effort")
+            return client.chat.completions.create(**kwargs)
 
     def _wait_for_interval(self):
         if self.last_request_time:
@@ -1222,6 +1247,27 @@ class AI(Tiku):
             return self._query_locked(q_info)
 
     def _query_locked(self, q_info: dict):
+        fp = fingerprint(q_info['title'], q_info.get('options', ''), q_info['type'])
+        cached = self._library.lookup(fp)
+        if cached:
+            logger.info(f"本地题库命中（已确认）：{q_info['title'][:40]} -> {cached}")
+            return cached
+
+        # 本地没有再问共享题库（用别人验证过的答案）
+        try:
+            from api.remote_library import lookup_batch
+
+            shared = lookup_batch([fp]).get(fp)
+        except Exception:
+            shared = None
+        if shared:
+            logger.info(f"共享题库命中：{q_info['title'][:40]} -> {shared}")
+            try:
+                self._library.upsert(fp, q_info['title'], q_info.get('options', ''),
+                                     q_info['type'], shared, source='share', status=1)
+            except Exception:
+                pass
+            return shared
         def remove_md_json_wrapper(md_str):
             # 使用正则表达式匹配Markdown代码块并提取内容
             pattern = r'^\s*```(?:json)?\s*(.*?)\s*```\s*$'
@@ -1257,70 +1303,136 @@ class AI(Tiku):
                         "content": feedback_text
                     }
                 )
+            content = user_content
+            if image_parts:
+                content = [{"type": "text", "text": user_content}] + list(image_parts)
             messages.append(
                 {
                     "role": "user",
-                    "content": user_content
+                    "content": content
                 }
             )
             return messages
+
+        # 题干可能带配图: 有视觉模型时把图片一起发过去, 否则剥离标签只发文本
+        title_text = q_info['title']
+        image_parts = []
+        if self.vision_model and '<img' in (title_text or '').lower():
+            title_text, image_parts = build_image_parts(title_text)
+            if image_parts:
+                logger.info(f"题干含配图, 已附上 {len(image_parts)} 张图交给 {self.vision_model}")
+        if not image_parts:
+            title_text = strip_images(title_text)
+        model_name = self.vision_model if image_parts else self.model
 
         # 判断题目类型
         self._wait_for_interval()
         self.last_request_time = time.time()
         if q_info['type'] == "single":
-            completion = client.chat.completions.create(**self._completion_kwargs(
-                model=self.model,
+            completion = self._create(client, **self._completion_kwargs(
+                model=model_name,
                 messages=_make_messages(
                     "本题为单选题，你只能选择一个选项，请根据题目和选项回答问题，以json格式输出正确的选项内容，示例回答：{\"Answer\": [\"答案\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
-                    f"题目：{q_info['title']}\n选项：{options}"
+                    f"题目：{title_text}\n选项：{options}"
                 )
             ))
         elif q_info['type'] == 'multiple':
-            completion = client.chat.completions.create(**self._completion_kwargs(
-                model=self.model,
+            completion = self._create(client, **self._completion_kwargs(
+                model=model_name,
                 messages=_make_messages(
-                    "本题为多选题，你必须选择两个或以上选项，请根据题目和选项回答问题，以json格式输出正确的选项内容，示例回答：{\"Answer\": [\"答案1\",\n\"答案2\",\n\"答案3\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
-                    f"题目：{q_info['title']}\n选项：{options}"
+                    "本题为多选题，请选出所有正确的选项，可能只有一个也可能有多个，不要多选没有把握的选项。以json格式输出正确的选项内容，不要输出选项前的字母，示例回答：{\"Answer\": [\"答案1\", \"答案2\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
+                    f"题目：{title_text}\n选项：{options}"
                 )
             ))
         elif q_info['type'] == 'completion':
-            completion = client.chat.completions.create(**self._completion_kwargs(
-                model=self.model,
+            completion = self._create(client, **self._completion_kwargs(
+                model=model_name,
                 messages=_make_messages(
                     "本题为填空题，你必须根据语境和相关知识填入合适的内容，请根据题目回答问题，以json格式输出正确的答案，示例回答：{\"Answer\": [\"答案\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
-                    f"题目：{q_info['title']}"
+                    f"题目：{title_text}"
                 )
             ))
         elif q_info['type'] == 'judgement':
-            completion = client.chat.completions.create(**self._completion_kwargs(
-                model=self.model,
+            completion = self._create(client, **self._completion_kwargs(
+                model=model_name,
                 messages=_make_messages(
                     "本题为判断题，你只能回答正确或者错误，请根据题目回答问题，以json格式输出正确的答案，示例回答：{\"Answer\": [\"正确\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
-                    f"题目：{q_info['title']}"
+                    f"题目：{title_text}"
+                )
+            ))
+        elif q_info['type'] in ('term', 'essay', 'calculation'):
+            # 考试卷面特有题型
+            exam_prompts = {
+                'term': "本题为名词解释，请用一到三句话给出准确简洁的定义，不要展开论述，也不要点评",
+                'essay': "本题为论述题，请先给出核心观点，再分条展开论证，条理清晰、篇幅适中，不要写成散文",
+                'calculation': "本题为计算题，请先写出所用公式，再逐步代入数值计算，最后明确给出结果（含单位）",
+            }
+            completion = self._create(client, **self._completion_kwargs(
+                model=model_name,
+                messages=_make_messages(
+                    exam_prompts[q_info['type']] + "。以json格式输出正确的答案，示例回答：{\"Answer\": [\"答案内容\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
+                    f"题目：{title_text}"
                 )
             ))
         else:
-            completion = client.chat.completions.create(**self._completion_kwargs(
-                model=self.model,
+            completion = self._create(client, **self._completion_kwargs(
+                model=model_name,
                 messages=_make_messages(
                     "本题为简答题，你必须根据语境和相关知识填入合适的内容，请根据题目回答问题，以json格式输出正确的答案，示例回答：{\"Answer\": [\"这是我的答案\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
-                    f"题目：{q_info['title']}"
+                    f"题目：{title_text}"
                 )
             ))
 
+        content = completion.choices[0].message.content or ""
+        if not content:
+            # 推理模型在 thinking 模式下可能只返回 reasoning_content
+            content = getattr(completion.choices[0].message, "reasoning_content", "") or ""
+
+        def _extract(payload):
+            items = payload.get("Answer") or payload.get("answer") or payload.get("答案")
+            if isinstance(items, str):
+                items = [items]
+            if items:
+                return "\n".join(str(x) for x in items).strip()
+            return ""
+
+        answer_text = ""
         try:
-            response = json.loads(remove_md_json_wrapper(completion.choices[0].message.content))
-            sep = "\n"
-            return sep.join(response['Answer']).strip()
-        except:
-            logger.error("无法解析大模型输出内容")
+            answer_text = _extract(json.loads(remove_md_json_wrapper(content)))
+        except Exception:
+            answer_text = ""
+
+        if not answer_text:
+            # 模型偶尔会夹带解释文字, 退一步从文本里抓 JSON 片段
+            matched_json = re.search(r"\{.*\}", content, re.S)
+            if matched_json:
+                try:
+                    answer_text = _extract(json.loads(matched_json.group(0)))
+                except Exception:
+                    answer_text = ""
+
+        if not answer_text:
+            logger.error("无法解析大模型输出内容: {}", (content or "")[:120])
             return None
+
+        # 回写本地题库, 先记为待验证, 整卷全对后才转正
+        try:
+            self._library.upsert(
+                fp, q_info['title'], q_info.get('options', ''), q_info['type'], answer_text
+            )
+        except Exception as exc:
+            logger.warning("写入本地题库失败: {}", exc)
+        return answer_text
 
     def _init_tiku(self):
         self.endpoint = self._conf['endpoint']
         self.key = self._conf['key']
+        if not self.key:
+            # 界面保存的 Key 在加密文件里，命令行或子进程可直接复用
+            from api.dpapi import read_saved_secrets
+            self.key = read_saved_secrets().get('api_key', '')
         self.model = self._conf['model']
+        self.vision_model = (self._conf.get('vision_model') or '').strip()
         self.http_proxy = self._conf['http_proxy']
         self.min_interval_seconds = int(self._conf['min_interval_seconds'])
 
@@ -1344,7 +1456,7 @@ class AI(Tiku):
                 self.last_request_time = time.time()
 
                 # 发送测试请求
-                completion = client.chat.completions.create(**self._completion_kwargs(
+                completion = self._create(client, **self._completion_kwargs(
                     model=self.model,
                     messages=[
                         {

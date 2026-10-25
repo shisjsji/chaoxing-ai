@@ -1,158 +1,214 @@
-# :computer: 超星学习通自动化完成任务点(命令行版)
+# 超星 AI 答题 · 桌面客户端
 
-<p align="center">
-    <a href="https://github.com/Samueli924/chaoxing" target="_blank" style="margin-right: 20px; font-style: normal; text-decoration: none;">
-        <img src="https://img.shields.io/github/stars/Samueli924/chaoxing" alt="Github Stars" />
-    </a>
-    <a href="https://github.com/Samueli924/chaoxing" target="_blank" style="margin-right: 20px; font-style: normal; text-decoration: none;">
-        <img src="https://img.shields.io/github/forks/Samueli924/chaoxing" alt="Github Forks" />
-    </a>
-    <a href="https://github.com/Samueli924/chaoxing" target="_blank" style="margin-right: 20px; font-style: normal; text-decoration: none;">
-        <img src="https://img.shields.io/github/languages/code-size/Samueli924/chaoxing" alt="Code-size" />
-    </a>
-    <a href="https://github.com/Samueli924/chaoxing" target="_blank" style="margin-right: 20px; font-style: normal; text-decoration: none;">
-        <img src="https://img.shields.io/github/v/release/Samueli924/chaoxing?display_name=tag&sort=semver" alt="version" />
-    </a>
-</p>
-:muscle: 本项目的最终目的是通过开源消灭所谓的付费刷课平台，希望有能力的朋友都可以为这个项目提交代码，支持本项目的良性发展
+把「刷课 + AI 答题 + 考试作答 + 本地题库」做进一个 Windows 桌面程序里，双击即用，不需要装浏览器插件、不需要懂命令行。
 
-:star: 觉得有帮助的朋友可以给个Star
+> 基于 [Samueli924/chaoxing](https://github.com/Samueli924/chaoxing) 的命令行能力重做界面与交互，并新增考试作答、共享题库、自动更新。协议为 **GPL-3.0**。
 
-## :point_up: 更新通知
-20241021更新通知： 感谢[sz134055](https://github.com/sz134055)提交代码[PR #360](https://github.com/Samueli924/chaoxing/pull/360)，**添加了对题库答题的支持**  
+---
 
-## :books: 使用方法
+## ⚠️ 请先读这一段
 
-### 源码运行（Python 3.13+）
+- **仅供个人学习研究与前端自动化实践**。请遵守你所在学校与平台的使用规定。
+- **使用后果自负**。程序会以你的账号执行真实操作，包括刷课、提交答案、参加考试并交卷，这些动作在平台上不可撤销。
+- **不破解任何验证手段**。程序不会识别图形验证码、不会伪造人脸、不会绕过考试签名。遇到这些环节会停下来要求你本人完成。
+- **不保证答案正确**。所有答案由大模型生成，可能出错。把它当成"先填一个看起来合理的答案"，而不是"标准答案"。
+- **不提供账号、不出售服务**。这是开源工具，不是代刷服务。
 
-1. clone 项目至本地
+---
 
-```bash
-git clone --depth=1 https://github.com/Samueli924/chaoxing 
-cd chaoxing
-```
+## 功能
 
-2. 安装依赖
+| 功能 | 状态 | 说明 |
+|---|---|---|
+| 自动刷课 | 稳定 | 视频、音频、文档、章节测验，最多 4 个章节并发 |
+| 章节测验 AI 答题 | 稳定 | 先查题库，未命中再问模型，按覆盖率自动提交 |
+| **考试自动作答** | **Beta** | 见下方[专门说明](#考试功能-beta) |
+| 本地题库 | 稳定 | SQLite 存储，按「题干 + 选项」指纹去重，选项顺序打乱也能命中 |
+| 共享题库 | 稳定 | 可选上报/查询，答案来自多人交叉验证 |
+| 自动更新 | 稳定 | 启动时检查，下载后校验再替换，失败自动回滚 |
+| 免登录 | 稳定 | Cookie 持久化，密码与密钥用 Windows DPAPI 加密 |
 
-```bash
-pip install -r requirements.txt
-```
-或使用 `pip install .`（通过 pyproject.toml 安装依赖）
+---
 
-3. (可选直接运行)
+## 界面
 
-```bash
-python main.py
-```
+程序开两个窗口，第三个是托盘图标：
 
-4. (可选配置文件运行)
+**① 控制台**（主窗口）——三栏布局
 
-> 复制config_template.ini文件为config.ini文件，修改文件内的账号密码内容
+| 页面 | 内容 |
+|---|---|
+| 概览 | 进行中/已完成/失败/任务点四个统计，章节列表按状态实时刷新，进行中的排在最前 |
+| 考试 | 考试列表（课程 / 状态 / 剩余时间），点「开始」进入考场并自动作答 |
+| 题库 | 本地题目与共享题库，可搜索、可删除、显示确认状态与命中次数 |
+| 设置 | 账号、模型、运行参数、版本与更新 |
 
-```bash
-python main.py -c config.ini
-```
+右侧是日志面板，实时回显子进程输出。窄窗口下会变成可从右侧拉出的抽屉。
 
-5. (可选命令行运行)
+**② 考试窗口** —— 一个内嵌浏览器，专门用来进考场
 
-```bash
-python main.py -u 手机号 -p 密码 -l 课程ID1,课程ID2,课程ID3...(可选) -a [retry|ask|continue](可选)
-```
+进考场需要过图形验证码，这一步必须由你本人完成。程序负责从浏览器地址里读取考场参数，然后接管答题。
 
-> Tips:  
-> 如果已安装低版本 Python 推荐使用 `uv` 运行：
+**③ 系统托盘** —— 关窗口不退出，从托盘可以重新打开或彻底退出。
 
-```bash
-uv run --python 3.13 main.py
-```
+---
 
-使用配置文件运行 ：
-```bash
-uv run --python 3.13 main.py -c config.ini
-```
+## 安装
 
-### 打包文件运行
-1. 从最新[Releases](https://github.com/Samueli924/chaoxing/releases)中下载exe文件
-2. (可选直接运行) 双击运行即可
-3. (可选配置文件运行) 下载config_template.ini文件保存为config.ini文件，修改文件内的账号密码内容, 执行 `./chaoxing.exe -c config.ini`
-4. (可选命令行运行)`./chaoxing.exe -u "手机号" -p "密码" -l 课程ID1,课程ID2,课程ID3...(可选) -a [retry|ask|continue](可选)`
+### 方式一：安装包（推荐）
 
-### Docker运行
-1. 构建Docker镜像
-   ```bash
-   docker build -t chaoxing .
-   ```
+下载 `setup-x.y.z.exe` 运行，选择安装目录即可。会创建桌面与开始菜单快捷方式，并在「已安装的应用」里注册卸载入口。
 
-2. 运行Docker容器
-   ```bash
-   # 直接运行（将使用默认配置模板）
-   docker run -it chaoxing
-   
-   # 使用自定义配置文件运行
-   docker run -it -v /本地路径/config.ini:/config/config.ini chaoxing
-   ```
+卸载时只删程序文件，`config.ini`、`cookies.txt`、`library.db` 这些用户数据会保留。
 
-3. 配置说明
-   - Docker版本默认使用挂载到 `/config/config.ini` 的配置文件
-   - 首次运行时，会自动将 `config_template.ini` 复制到该位置作为模板
-   - 可以将本地编辑好的配置文件挂载到容器中，按照上述示例命令操作
-
-### 题库配置说明
-
-在你的配置文件中找到`[tiku]`，按照注释填写想要使用的题库名（即`provider`，大小写要一致），并填写必要信息，如token，然后在启动时添加`-c [你的配置文件路径]`即可。
-
-题库会默认使用根目录下的`config.ini`文件中的配置，所以你可以复制配置模板（参照前面的说明）命名为`config.ini`，并只配置题库项`[tiku]`，这样即使你不填写账号之类的信息，不使用`-c`参数指定配置文件，题库也会根据这个配置文件自动配置并启用。
-
-对于那些有章节检测且任务点需要解锁的课程，必须配置题库。
-
-**提交模式与答题**
-不配置题库（既不提供配置文件，也没有放置默认配置文件`config.ini`或填写要使用的题库）视为不使用题库，对于章节检测等需要答题的任务会自动跳过。
-题库覆盖率：搜到的题目占总题目的比例
-提交模式`submit`值为
-
-- `true`：会答完题，达到题库题目覆盖率提交，没达到只保存，**正确率不做保证**。
-- `false`：会答题，但是不会提交，仅保存搜到答案的，随后你可以自行前往学习通查看、修改、提交。**任何填写不正确的`submit`值会被视为`false`**
-
-> 题库名即`answer.py`模块中根据`Tiku`类实现的具体题库类，例如`TikuYanxi`（言溪题库），在填写时，请务必保持大小写一致。
-
-### 已关闭任务点处理配置说明
-
-在配置文件的 `[common]` 部分，可以通过 `notopen_action` 选项配置遇到已关闭任务点时的处理方式:
-
-- `retry` (默认): 遇到关闭的任务点时尝试重新完成上一个任务点，如果连续重试 3 次仍然失败 (或未配置题库及自动提交) 则停止
-- `ask`: 遇到关闭的任务点时询问用户是否继续。选择继续后会自动跳过连续的关闭任务点，直到遇到开放的任务点
-- `continue`: 自动跳过所有关闭的任务点，继续检查和完成后续任务点
-
-也可以通过命令行参数 `-a` 或 `--notopen-action` 指定处理方式，例如：
+### 方式二：源码运行
 
 ```bash
-python main.py -a ask  # 使用询问模式
+git clone https://github.com/shisjsji/<仓库名>.git
+cd <仓库名>
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe run_webui.py
 ```
 
-### 章节学习次数配置说明
+浏览器打开 <http://127.0.0.1:5000>。
 
-在配置文件的 `[common]` 部分，可以通过下面两个选项控制章节学习次数功能：
+---
 
-- `add_learning_count = false`：是否在完成刷课任务后，继续对课程章节执行学习次数增加
-- `target_count = 100`：章节学习次数的目标总次数，程序会轮询课程章节直到达到该次数
+## 配置
 
-当前实现会先完成所选课程的任务点，再统一执行章节学习次数增加流程。如果开启了 `add_learning_count`，它会作为刷课完成后的追加步骤执行，而不是独立模式。
+打开程序后先去「设置」页填三样东西，缺一不可，否则无法开始：
 
-**外部通知配置说明**
+1. **学习通手机号 + 密码** —— 用于登录
+2. **接口地址 + API Key** —— 任意 OpenAI 兼容接口（DeepSeek、硅基流动、自建都可以）
+3. **课程** —— 点「拉取课程列表」勾选，或手填课程 ID
 
-这功能会在所有课程学习任务结束后，或是程序出现错误时，使用外部通知服务推送消息告知你（~~有用但不多~~）
+其余是可选调优：
 
-与题库配置类似，不填写视为不使用，按照注释填写想要使用的外部通知服务（也是`provider`，大小写要一致），并填写必要的`url`
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| 视频倍速 | 1.5 | 平台允许的上限通常是 2 |
+| 同时处理的章节数 | 4 | 越大越快，但请求更密集 |
+| 请求间隔 | 1.0 秒 | 遇到限流可以调大 |
+| 思考强度 | 关闭 | 打开后模型会先推理再作答，更准但更慢 |
+| 视觉模型 | 不使用 | 带配图的题可以配上，会截图发给多模态模型 |
+| 未开放的任务点 | 重试 | 也可以选择跳过继续 |
 
-## :heart: CONTRIBUTORS
+> **注意**：课程列表**留空会刷全部课程**。程序在开始前会确认一次，别一路回车。
 
-![Alt](https://repobeats.axiom.co/api/embed/d3931e84b4b2f17cbe60cafedb38114bdf9931cb.svg "Repobeats analytics image")  
+---
 
-<a style="margin-top: 15px" href="https://github.com/Samueli924/chaoxing/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Samueli924/chaoxing" />
-</a>
+## 考试功能 (Beta)
 
-## :warning: 免责声明
-- 本代码遵循 [GPL-3.0 License](https://github.com/Samueli924/chaoxing/blob/main/LICENSE) 协议，允许**开源/免费使用和引用/修改/衍生代码的开源/免费使用**，不允许**修改和衍生的代码作为闭源的商业软件发布和销售**，禁止**使用本代码盈利**，以此代码为基础的程序**必须**同样遵守 [GPL-3.0 License](https://github.com/Samueli924/chaoxing/blob/main/LICENSE) 协议
-- 本代码仅用于**学习讨论**，禁止**用于盈利**
-- 他人或组织使用本代码进行的任何**违法行为**与本人无关
+考试作答是本项目**最不成熟**的部分，请当成 Beta 对待。
+
+**能做什么**：进入考场 → 读答题卡 → 逐题作答（选项点击、主观题填框）→ 每题回读确认 → 全部答完后自动交卷。
+
+**已知限制**：
+
+- **必须你本人过图形验证码**。程序不识别验证码，这是刻意不做的事。
+- **需要人脸识别的场次会停下**，等你在手机上完成后再继续。
+- **主观题由 AI 代写**。论述题、名词解释这类题的答案质量很依赖模型，可能被老师看出来，也可能得低分。
+- **自动交卷尚未充分验证**。它只在「答题卡确认全部已答」时才触发，按钮文本严格匹配，点完会回读确认；但如果平台改版，可能找不到按钮——那时会明确提示你手动点。
+- **只在一场真实考试上跑通过**。
+
+**建议**：第一次用，挑一场可以放弃的考试试。全程盯着日志，看到「找到「交卷」按钮，正在交卷」再确认结果。
+
+---
+
+## 技术架构
+
+```
+desktop.py            桌面入口：两个 pywebview 窗口 + 托盘
+run_webui.py          纯网页模式入口（开发用）
+main.py               刷课主流程（子进程运行）
+
+webui/server.py       Flask 后端：配置、进程管理、日志回传、考试编排
+webui/templates/      单页界面
+api/base.py           学习通协议核心（上游代码）
+api/answer.py         题库与 AI 答题调度
+api/exam.py           考试协议与模型调用
+api/browser_exam.py   浏览器驱动的考试作答（Beta）
+api/library.py        本地题库（SQLite）
+api/remote_library.py 共享题库客户端
+api/updater.py        检查更新、下载校验、独立脚本替换
+api/dpapi.py          Windows DPAPI 凭据加密
+
+server/               共享题库服务端（Flask + Gunicorn，独立部署）
+site/                 项目官网
+tests/                单元测试
+```
+
+**几个设计选择**：
+
+- 刷课跑在**子进程**里，界面崩了不影响已启动的任务。
+- 考试走**内嵌浏览器**而不是直接发 HTTP 请求。原因是考场要求客户端签名和图形验证码，纯 HTTP 模拟走不通；让真浏览器过这两关，程序只接管答题。
+- 更新替换由**独立 PowerShell 脚本**在主程序退出后执行：先解压到临时目录并校验关键文件，通过后才交换，失败自动回滚。
+- 题库按「题干 + 排序后的选项」生成指纹，所以选项顺序被打乱也能命中；存的是**选项原文**而不是字母，跨场次仍然有效。
+
+---
+
+## 边界：这个程序做什么，不做什么
+
+**做**：
+
+- 用你的账号自动完成课程任务点
+- 用大模型给章节测验和考试填答案
+- 把答过的题攒成本地题库
+- 在你自己部署的服务端上共享题库
+
+**不做**：
+
+- 不破解验证码、滑块、人脸识别、考试签名
+- 不提供账号、不代刷、不接单
+- 不上传你的账号密码到任何服务器（密码只在本机 DPAPI 加密保存）
+- 不保证答案正确，不承诺任何分数
+
+**关于共享题库**：客户端内置了一个公开的共享令牌（源码里可见，因为所有使用者共用一个）。它只用于访问本项目的题库服务。想指向自己的服务，设置环境变量 `CHAOXING_LIB_ENDPOINT` 和 `CHAOXING_LIB_TOKEN`。
+
+---
+
+## 常见问题
+
+**登录失败 / 一直提示密码错误？**
+先在浏览器里登录学习通确认账号能进，再回来填。部分学校要求先绑定手机号。
+
+**刷课卡住不动？**
+看日志里最后一条。常见是「未开放的任务点」，可以在设置里改成跳过。
+
+**考试点「开始」没反应？**
+会弹出考试窗口，需要你在里面手动进入考场并过验证码。程序每秒检查一次地址，检测到答题页就自动接手。
+
+**答案明显不对？**
+模型有概率出错。题库里标为「已确认」的答案是被人反复验证过的，优先级更高。
+
+**更新失败怎么办？**
+程序会把原因写在安装目录的 `update_failed.txt`，下次启动时提示。原版本不会被破坏，可以直接重新下载安装包覆盖。
+
+---
+
+## 开源协议
+
+**GNU General Public License v3.0** —— 见 [LICENSE](LICENSE)。
+
+这是一个派生作品，上游是 [Samueli924/chaoxing](https://github.com/Samueli924/chaoxing)（GPL-3.0）。按 GPL-3.0 的要求：
+
+- 你可以自由使用、修改、分发
+- 分发修改版时必须同样以 GPL-3.0 开源，并保留原始版权声明
+- 不提供任何担保
+
+**致谢**：
+
+- [Samueli924/chaoxing](https://github.com/Samueli924/chaoxing) —— 学习通协议实现的基础
+- [sml2h3/ddddocr](https://github.com/sml2h3/ddddocr) —— 验证码识别
+- 以及所有提交过 PR 的贡献者
+
+---
+
+## 联系
+
+- GitHub：[@shisjsji](https://github.com/shisjsji)
+- 博客：<https://lingluandf.online>
+- 酷安：30432128
+
+问题优先开 Issue，附上日志（日志里不含密码）。

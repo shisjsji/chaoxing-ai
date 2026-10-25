@@ -12,7 +12,7 @@ from tqdm import tqdm
 from api.answer import Tiku
 from api.base import Chaoxing, Account, StudyResult
 from api.exceptions import LoginError, InputFormatError
-from api.logger import logger
+from api.logger import logger, set_chapter, emit_event
 from api.notification import Notification
 from api.live import Live
 from api.live_process import LiveProcessor
@@ -446,36 +446,61 @@ class JobProcessor:
 
 def process_chapter(chaoxing: Chaoxing, course: dict[str, Any], point: dict[str, Any], speed: float) -> ChapterResult:
     """处理单个章节"""
-    logger.info(f'当前章节: {point["title"]}')
-    if point["has_finished"]:
-        logger.info(f'章节：{point["title"]} 已完成所有任务点')
+    title = point["title"]
+    course_title = str(course.get("title") or "")
+    set_chapter(title, course_title)
+    try:
+        logger.info(f'当前章节: {title}')
+
+        if point["has_finished"]:
+            logger.info(f'章节：{title} 已完成所有任务点')
+            emit_event({"type": "chapter", "course": course_title, "chapter": title,
+                        "state": "done", "pct": 100, "done": 1, "total": 1})
+            return ChapterResult.SUCCESS
+
+        # 随机等待，避免请求过快
+        chaoxing.rate_limiter.limit_rate(random_time=True, random_min=0, random_max=0.2)
+
+        # 获取当前章节的所有任务点
+        job_info = None
+        jobs, job_info = chaoxing.get_job_list(course, point)
+
+        # 发现未开放章节, 根据配置处理
+        if job_info.get("notOpen", False):
+            emit_event({"type": "chapter", "course": course_title, "chapter": title,
+                        "state": "notopen", "pct": 0})
+            return ChapterResult.NOT_OPEN
+
+        total = max(1, len(jobs))
+        emit_event({"type": "chapter", "course": course_title, "chapter": title,
+                    "state": "running", "pct": 0, "done": 0, "total": total})
+
+        job_results: list[StudyResult] = []
+        for idx, job in enumerate(jobs):
+            result = process_job(chaoxing, course, job, job_info, speed)
+            job_results.append(result)
+            emit_event({
+                "type": "chapter",
+                "course": course_title,
+                "chapter": title,
+                "state": "running",
+                "pct": int((idx + 1) / total * 100),
+                "done": idx + 1,
+                "total": total,
+                "job": str(job.get("name") or job.get("type") or ""),
+            })
+
+        for result in job_results:
+            if result.is_failure():
+                emit_event({"type": "chapter", "course": course_title, "chapter": title,
+                            "state": "error", "done": len(jobs), "total": total})
+                return ChapterResult.ERROR
+
+        emit_event({"type": "chapter", "course": course_title, "chapter": title,
+                    "state": "done", "pct": 100, "done": total, "total": total})
         return ChapterResult.SUCCESS
-
-    # 随机等待，避免请求过快
-    chaoxing.rate_limiter.limit_rate(random_time=True, random_min=0, random_max=0.2)
-
-    # 获取当前章节的所有任务点
-    job_info = None
-    jobs, job_info = chaoxing.get_job_list(course, point)
-
-    # 发现未开放章节, 根据配置处理
-    if job_info.get("notOpen", False):
-        return ChapterResult.NOT_OPEN
-
-    # 已经默认处理空任务，此处不需要判断
-    if not jobs:
-        pass
-
-    job_results: list[StudyResult] = []
-    for job in jobs:
-        result = process_job(chaoxing, course, job, job_info, speed)
-        job_results.append(result)
-
-    for result in job_results:
-        if result.is_failure():
-            return ChapterResult.ERROR
-
-    return ChapterResult.SUCCESS
+    finally:
+        set_chapter("", "")
 
 
 def process_course(chaoxing: Chaoxing, course: dict[str, Any], config: dict):
@@ -506,6 +531,10 @@ def process_course(chaoxing: Chaoxing, course: dict[str, Any], config: dict):
 def filter_courses(all_course, course_list):
     """过滤要学习的课程"""
     if not course_list:
+        # 非交互场景（Web 控制台）下留空表示全部课程，避免 input() 在无 stdin 时崩溃
+        if not sys.stdin.isatty():
+            logger.info("未指定课程列表且当前为非交互模式, 将处理全部 {} 门课程", len(all_course))
+            return all_course
         # 手动输入要学习的课程ID列表
         print("*" * 10 + "课程列表" + "*" * 10)
         for course in all_course:
@@ -528,7 +557,11 @@ def filter_courses(all_course, course_list):
             course_task.append(course)
             seen_keys.add(key)
     
-    # 如果没有指定课程，则学习所有课程
+    # 指定了课程却一个都没匹配上时, 宁可不动也不要去刷全部课程
+    if not course_task and course_list:
+        logger.error("指定的课程 ID 未匹配到任何课程, 本次将不执行学习任务, 请检查课程 ID")
+        return []
+
     if not course_task:
         course_task = all_course
 
@@ -587,15 +620,30 @@ def main():
         _old_format_sizeof = tqdm.format_sizeof
         tqdm.format_sizeof = format_time
 
-        tasks = []
+        per_course_tasks: list[list[ChapterTask]] = []
         for course in course_task:
             logger.info(f"正在读取课程章节: {course['title']}")
             point_list = chaoxing.get_course_point(
                 course["courseId"], course["clazzId"], course["cpi"]
             )
-            for i, point in enumerate(point_list["points"]):
-                task = ChapterTask(point=point, index=i, course=course)
-                tasks.append(task)
+            course_tasks = [
+                ChapterTask(point=point, index=i, course=course)
+                for i, point in enumerate(point_list["points"])
+            ]
+            per_course_tasks.append(course_tasks)
+
+        # 按课程交错排队，这样固定数量的工作线程会自然分散到不同课程，
+        # 而不是把同一门课的章节连着跑完，多选课程时每门课都能看到进度
+        tasks: list[ChapterTask] = []
+        longest = max((len(c) for c in per_course_tasks), default=0)
+        order = 0
+        for i in range(longest):
+            for course_tasks in per_course_tasks:
+                if i < len(course_tasks):
+                    task = course_tasks[i]
+                    task.index = order
+                    order += 1
+                    tasks.append(task)
 
         # 全局并发执行所有课程的任务点
         p = JobProcessor(chaoxing, tasks, common_config)
