@@ -73,8 +73,8 @@
 ### 方式二：源码运行
 
 ```bash
-git clone https://github.com/shisjsji/<仓库名>.git
-cd <仓库名>
+git clone https://github.com/shisjsji/chaoxing-ai.git
+cd chaoxing-ai
 py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 .venv\Scripts\python.exe run_webui.py
