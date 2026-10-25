@@ -1201,30 +1201,61 @@ async function loadLibrary() {
     const list = document.createElement('div');
     list.className = 'list';
     const statusMap = {0: '待验证', 1: '已确认', 2: '已判错'};
+    // 答案的可信依据：用户一眼就能看出哪些能信、哪些只是模型猜的
+    const evidenceMap = {
+      platform: '平台判分', quiz: '整卷满分', ai_agree: '双答一致',
+      shared: '共享库', manual: '手工确认', conflict: '答案冲突',
+      manual_wrong: '手工标错', platform_wrong: '平台判错', model: '仅模型猜测'
+    };
     d.items.forEach(it => {
       const row = document.createElement('div');
       row.className = 'list-row';
       const name = document.createElement('span');
       name.className = 'name';
       name.innerHTML = '<small></small><span></span>';
-      name.querySelector('small').textContent = statusMap[it.status] || '';
+      const tag = [statusMap[it.status] || ''];
+      if (it.evidence && evidenceMap[it.evidence]) tag.push(evidenceMap[it.evidence]);
+      name.querySelector('small').textContent = tag.filter(Boolean).join(' · ');
       name.querySelector('span').textContent = it.title.slice(0, 60);
       const meta = document.createElement('span');
       meta.className = 'meta';
       meta.textContent = '答案：' + (it.answer || '—');
       const actions = document.createElement('span');
       actions.className = 'actions';
-      const btn = document.createElement('button');
-      btn.className = 'btn text';
-      btn.textContent = '删除';
-      btn.onclick = async () => {
+
+      const mkBtn = (text, handler, cls) => {
+        const b = document.createElement('button');
+        b.className = cls || 'btn text';
+        b.textContent = text;
+        b.onclick = handler;
+        actions.appendChild(b);
+        return b;
+      };
+
+      if (it.status !== 1) {
+        mkBtn('确认', async () => {
+          try {
+            await post('/api/library/confirm', {fingerprint: it.fingerprint});
+            loadLibrary();
+          } catch (err) { setMsg('确认失败：' + err.message, 'err'); }
+        });
+      }
+      if (it.status !== 2) {
+        mkBtn('标错', async () => {
+          try {
+            await post('/api/library/reject', {fingerprint: it.fingerprint});
+            loadLibrary();
+          } catch (err) { setMsg('标记失败：' + err.message, 'err'); }
+        });
+      }
+      mkBtn('删除', async () => {
         if (!confirm('删除这道题？')) return;
         try {
           await post('/api/library/delete', {fingerprint: it.fingerprint});
           loadLibrary();
         } catch (err) { setMsg('删除失败：' + err.message, 'err'); }
-      };
-      actions.appendChild(btn);
+      });
+
       row.appendChild(name); row.appendChild(meta); row.appendChild(actions);
       list.appendChild(row);
     });

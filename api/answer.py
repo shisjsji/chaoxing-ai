@@ -20,7 +20,7 @@ from .vision_helper import build_image_parts, strip_images
 from urllib3 import disable_warnings, exceptions
 
 from api.answer_check import check_answer
-from api.library import Library, fingerprint
+from api.library import OBJECTIVE_QTYPES, Library, fingerprint
 from api.logger import logger
 
 # 关闭警告
@@ -1325,68 +1325,35 @@ class AI(Tiku):
             title_text = strip_images(title_text)
         model_name = self.vision_model if image_parts else self.model
 
-        # 判断题目类型
-        self._wait_for_interval()
-        self.last_request_time = time.time()
-        if q_info['type'] == "single":
-            completion = self._create(client, **self._completion_kwargs(
-                model=model_name,
-                messages=_make_messages(
-                    "本题为单选题，你只能选择一个选项，请根据题目和选项回答问题，以json格式输出正确的选项内容，示例回答：{\"Answer\": [\"答案\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
-                    f"题目：{title_text}\n选项：{options}"
-                )
-            ))
-        elif q_info['type'] == 'multiple':
-            completion = self._create(client, **self._completion_kwargs(
-                model=model_name,
-                messages=_make_messages(
-                    "本题为多选题，请选出所有正确的选项，可能只有一个也可能有多个，不要多选没有把握的选项。以json格式输出正确的选项内容，不要输出选项前的字母，示例回答：{\"Answer\": [\"答案1\", \"答案2\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
-                    f"题目：{title_text}\n选项：{options}"
-                )
-            ))
-        elif q_info['type'] == 'completion':
-            completion = self._create(client, **self._completion_kwargs(
-                model=model_name,
-                messages=_make_messages(
-                    "本题为填空题，你必须根据语境和相关知识填入合适的内容，请根据题目回答问题，以json格式输出正确的答案，示例回答：{\"Answer\": [\"答案\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
-                    f"题目：{title_text}"
-                )
-            ))
-        elif q_info['type'] == 'judgement':
-            completion = self._create(client, **self._completion_kwargs(
-                model=model_name,
-                messages=_make_messages(
-                    "本题为判断题，你只能回答正确或者错误，请根据题目回答问题，以json格式输出正确的答案，示例回答：{\"Answer\": [\"正确\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
-                    f"题目：{title_text}"
-                )
-            ))
-        elif q_info['type'] in ('term', 'essay', 'calculation'):
-            # 考试卷面特有题型
-            exam_prompts = {
-                'term': "本题为名词解释，请用一到三句话给出准确简洁的定义，不要展开论述，也不要点评",
-                'essay': "本题为论述题，请先给出核心观点，再分条展开论证，条理清晰、篇幅适中，不要写成散文",
-                'calculation': "本题为计算题，请先写出所用公式，再逐步代入数值计算，最后明确给出结果（含单位）",
-            }
-            completion = self._create(client, **self._completion_kwargs(
-                model=model_name,
-                messages=_make_messages(
-                    exam_prompts[q_info['type']] + "。以json格式输出正确的答案，示例回答：{\"Answer\": [\"答案内容\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
-                    f"题目：{title_text}"
-                )
-            ))
-        else:
-            completion = self._create(client, **self._completion_kwargs(
-                model=model_name,
-                messages=_make_messages(
-                    "本题为简答题，你必须根据语境和相关知识填入合适的内容，请根据题目回答问题，以json格式输出正确的答案，示例回答：{\"Answer\": [\"这是我的答案\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料",
-                    f"题目：{title_text}"
-                )
-            ))
-
-        content = completion.choices[0].message.content or ""
-        if not content:
-            # 推理模型在 thinking 模式下可能只返回 reasoning_content
-            content = getattr(completion.choices[0].message, "reasoning_content", "") or ""
+        # ---------- 组提示词：同一道题问两遍，第二遍换一套说法独立再判 ----------
+        def _compose(variant: int):
+            prefix = ("这次是独立复核：请完全重新判读题目，不要假定任何既有答案。"
+                      "先在内部逐项比对，再给出最终结论。") if variant else ""
+            kind = q_info['type']
+            if kind == "single":
+                system = "本题为单选题，你只能选择一个选项，请根据题目和选项回答问题，以json格式输出正确的选项内容，示例回答：{\"Answer\": [\"答案\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料"
+                user = f"题目：{title_text}\n选项：{options}"
+            elif kind == 'multiple':
+                system = "本题为多选题，请选出所有正确的选项，可能只有一个也可能有多个，不要多选没有把握的选项。以json格式输出正确的选项内容，不要输出选项前的字母，示例回答：{\"Answer\": [\"答案1\", \"答案2\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料"
+                user = f"题目：{title_text}\n选项：{options}"
+            elif kind == 'completion':
+                system = "本题为填空题，你必须根据语境和相关知识填入合适的内容，请根据题目回答问题，以json格式输出正确的答案，示例回答：{\"Answer\": [\"答案\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料"
+                user = f"题目：{title_text}"
+            elif kind == 'judgement':
+                system = "本题为判断题，你只能回答正确或者错误，请根据题目回答问题，以json格式输出正确的答案，示例回答：{\"Answer\": [\"正确\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料"
+                user = f"题目：{title_text}"
+            elif kind in ('term', 'essay', 'calculation'):
+                exam_prompts = {
+                    'term': "本题为名词解释，请用一到三句话给出准确简洁的定义，不要展开论述，也不要点评",
+                    'essay': "本题为论述题，请先给出核心观点，再分条展开论证，条理清晰、篇幅适中，不要写成散文",
+                    'calculation': "本题为计算题，请先写出所用公式，再逐步代入数值计算，最后明确给出结果（含单位）",
+                }
+                system = exam_prompts[kind] + "。以json格式输出正确的答案，示例回答：{\"Answer\": [\"答案内容\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料"
+                user = f"题目：{title_text}"
+            else:
+                system = "本题为简答题，你必须根据语境和相关知识填入合适的内容，请根据题目回答问题，以json格式输出正确的答案，示例回答：{\"Answer\": [\"这是我的答案\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料"
+                user = f"题目：{title_text}"
+            return prefix + system, user
 
         def _extract(payload):
             items = payload.get("Answer") or payload.get("answer") or payload.get("答案")
@@ -1396,29 +1363,71 @@ class AI(Tiku):
                 return "\n".join(str(x) for x in items).strip()
             return ""
 
-        answer_text = ""
-        try:
-            answer_text = _extract(json.loads(remove_md_json_wrapper(content)))
-        except Exception:
-            answer_text = ""
+        def _ask(variant: int) -> str:
+            system, user = _compose(variant)
+            self._wait_for_interval()
+            self.last_request_time = time.time()
+            completion = self._create(client, **self._completion_kwargs(
+                model=model_name,
+                messages=_make_messages(system, user)
+            ))
+            content = completion.choices[0].message.content or ""
+            if not content:
+                # 推理模型在 thinking 模式下可能只返回 reasoning_content
+                content = getattr(completion.choices[0].message, "reasoning_content", "") or ""
+            text = ""
+            try:
+                text = _extract(json.loads(remove_md_json_wrapper(content)))
+            except Exception:
+                text = ""
+            if not text:
+                # 模型偶尔夹带解释文字, 退一步从文本里抓 JSON 片段
+                matched_json = re.search(r"\{.*\}", content, re.S)
+                if matched_json:
+                    try:
+                        text = _extract(json.loads(matched_json.group(0)))
+                    except Exception:
+                        text = ""
+            if not text:
+                logger.error("无法解析大模型输出内容: {}", (content or "")[:120])
+            return text
 
-        if not answer_text:
-            # 模型偶尔会夹带解释文字, 退一步从文本里抓 JSON 片段
-            matched_json = re.search(r"\{.*\}", content, re.S)
-            if matched_json:
-                try:
-                    answer_text = _extract(json.loads(matched_json.group(0)))
-                except Exception:
-                    answer_text = ""
+        def _same_key(a: str, b: str) -> bool:
+            from api.library import normalize_answer
 
+            ka = normalize_answer(a, q_info['type'], q_info.get('options', ''))
+            kb = normalize_answer(b, q_info['type'], q_info.get('options', ''))
+            return bool(ka) and ka == kb
+
+        # 第一遍
+        answer_text = _ask(0)
         if not answer_text:
-            logger.error("无法解析大模型输出内容: {}", (content or "")[:120])
             return None
 
-        # 回写本地题库, 先记为待验证, 整卷全对后才转正
+        # 客观题换提示词再问一遍，两次一致才算可信；不一致再问一次取多数
+        agreed = False
+        if q_info['type'] in OBJECTIVE_QTYPES:
+            second = _ask(1)
+            if second and _same_key(answer_text, second):
+                agreed = True
+                logger.info("双答一致，本题答案记为已确认")
+            elif second:
+                third = _ask(0)
+                if third and _same_key(answer_text, third):
+                    agreed = True
+                    logger.info("双答不一致，第三次支持第一答案，采用")
+                elif third and _same_key(second, third):
+                    answer_text, agreed = second, True
+                    logger.info("双答不一致，第三次支持第二答案，采用")
+                else:
+                    logger.warning("双答不一致且无法定论，本题答案只作待验证")
+        evidence = "ai_agree" if agreed else "model"
+
+        # 回写本地题库：双答一致的才记成已确认，单次猜测一律待验证
         try:
             self._library.upsert(
-                fp, q_info['title'], q_info.get('options', ''), q_info['type'], answer_text
+                fp, q_info['title'], q_info.get('options', ''), q_info['type'], answer_text,
+                status=1 if agreed else 0, evidence=evidence
             )
         except Exception as exc:
             logger.warning("写入本地题库失败: {}", exc)

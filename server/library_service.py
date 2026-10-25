@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS answers (
     options     TEXT DEFAULT '',
     qtype       TEXT DEFAULT '',
     answer      TEXT NOT NULL,
+    answer_key  TEXT DEFAULT '',
     votes       INTEGER DEFAULT 0,
     status      INTEGER DEFAULT 1,
     created_at  REAL,
@@ -55,6 +56,7 @@ CREATE TABLE IF NOT EXISTS submissions (
     fingerprint TEXT,
     user_hash   TEXT,
     answer      TEXT,
+    answer_key  TEXT DEFAULT '',
     confidence  TEXT DEFAULT 'medium',
     created_at  REAL
 );
@@ -79,9 +81,16 @@ def _conn():
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.executescript(_SCHEMA)
     # 旧库补列
-    cols = [row[1] for row in conn.execute("PRAGMA table_info(submissions)").fetchall()]
-    if "confidence" not in cols:
+    sub_cols = [row[1] for row in conn.execute("PRAGMA table_info(submissions)").fetchall()]
+    if "confidence" not in sub_cols:
         conn.execute("ALTER TABLE submissions ADD COLUMN confidence TEXT DEFAULT 'medium'")
+        conn.commit()
+    if "answer_key" not in sub_cols:
+        conn.execute("ALTER TABLE submissions ADD COLUMN answer_key TEXT DEFAULT ''")
+        conn.commit()
+    ans_cols = [row[1] for row in conn.execute("PRAGMA table_info(answers)").fetchall()]
+    if "answer_key" not in ans_cols:
+        conn.execute("ALTER TABLE answers ADD COLUMN answer_key TEXT DEFAULT ''")
         conn.commit()
     return conn
 
@@ -99,6 +108,57 @@ def _fingerprint(title: str, options: str, qtype: str) -> str:
     opts.sort()
     payload = _norm(title) + "|" + "|".join(opts) + "|" + (qtype or "")
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+
+def _normalize_answer(answer: str, qtype: str, options: str) -> str:
+    """答案归一化，用于投票分组。
+
+    必须和客户端 api/library.py 的 normalize_answer 保持一致 —— 服务端是独立
+    部署的单文件脚本，没法直接 import 客户端代码。改一边就得同步另一边。
+    """
+    text = (answer or "").strip()
+    if not text:
+        return ""
+    kind = (qtype or "").lower()
+
+    if kind in ("judgement", "judge"):
+        low = text.lower()
+        exact_t = {"true", "t", "yes", "y", "1", "正确", "对", "是", "√", "对的", "正确的"}
+        exact_f = {"false", "f", "no", "n", "0", "错误", "错", "否", "×", "x", "错的"}
+        if low in exact_t:
+            return "T"
+        if low in exact_f:
+            return "F"
+        for word in ("不正确", "不对", "不是", "错误", "错", "×", "否"):
+            if word in text:
+                return "F"
+        for word in ("正确", "对", "是", "√"):
+            if word in text:
+                return "T"
+        return _norm(text)
+
+    if kind in ("single", "multiple", "multi"):
+        cleaned = re.sub(r"^(答案|answer)\s*[:：]?", "", text, flags=re.I)
+        if re.fullmatch(r"[A-Fa-f][\s,、，/.]*([A-Fa-f][\s,、，/.]*)*", cleaned):
+            letters = [ch.upper() for ch in re.findall(r"[A-Fa-f]", cleaned)]
+            opts = []
+            for line in (options or "").split("\n"):
+                item = re.sub(r"^[A-Za-z]\s*[.、:：)?）]?\s*", "", line.strip())
+                if item:
+                    opts.append(item)
+            if opts:
+                picked = []
+                for ch in letters:
+                    idx = ord(ch) - 65
+                    if 0 <= idx < len(opts):
+                        picked.append(_norm(opts[idx]))
+                if picked:
+                    return "|".join(sorted(set(picked)))
+            return "".join(sorted(set(letters)))
+        parts = [p for p in re.split(r"[、,，;；/|\n]+", text) if p.strip()]
+        return "|".join(sorted({_norm(p) for p in parts}))
+
+    return _norm(text)
 
 
 def _authorized() -> bool:
@@ -181,34 +241,53 @@ def submit():
                     # 这题票数已经够了，再收只会让统计变慢，也可能被拿来刷
                     continue
 
+                answer_key = _normalize_answer(answer, qtype, options) or answer
+
                 conn.execute(
-                    "INSERT INTO submissions(fingerprint,user_hash,answer,confidence,created_at) "
-                    "VALUES(?,?,?,?,?)",
-                    (fp, user_hash, answer, confidence, now),
+                    "INSERT INTO submissions(fingerprint,user_hash,answer,answer_key,confidence,"
+                    "created_at) VALUES(?,?,?,?,?,?)",
+                    (fp, user_hash, answer, answer_key, confidence, now),
                 )
 
-                # 按置信度加权统计
+                # 按答案 key 归组：同一条答案的不同写法（true / 正确 / A）算一票
                 weights: dict[str, int] = {}
-                for ans, conf in conn.execute(
-                    "SELECT answer, confidence FROM submissions WHERE fingerprint=?", (fp,)
+                voters: dict[str, set] = {}
+                texts: dict[str, str] = {}
+                high_keys: set[str] = set()
+                for ans, akey, conf, uh in conn.execute(
+                    "SELECT answer, answer_key, confidence, user_hash FROM submissions"
+                    " WHERE fingerprint=?", (fp,)
                 ).fetchall():
-                    weights[ans] = weights.get(ans, 0) + (2 if conf == "high" else 1)
+                    akey = akey or _normalize_answer(ans or "", qtype, options) or ans
+                    if not akey:
+                        continue
+                    weights[akey] = weights.get(akey, 0) + (2 if conf == "high" else 1)
+                    voters.setdefault(akey, set()).add(uh)
+                    if akey not in texts or conf == "high":
+                        texts[akey] = ans or ""
+                    if conf == "high":
+                        high_keys.add(akey)
                 if not weights:
                     continue
                 ordered = sorted(weights.items(), key=lambda kv: kv[1], reverse=True)
-                best_answer, best_votes = ordered[0]
-                second = ordered[1][1] if len(ordered) > 1 else 0
-                # 平票才算有争议；多数票（含 2:1）直接采信
-                disputed = second > 0 and best_votes == second
-                status = 0 if disputed else 1
+                best_key, best_votes = ordered[0]
+
+                # 可用门槛：这条答案要么有「平台读卷满分」背书（high），
+                # 要么至少两个不同用户给出一致的答案。单票的普通猜测一律不可用，
+                # 否则一张 60 分的卷子就能把错答案送进所有人的题库。
+                usable = best_key in high_keys or len(voters.get(best_key, ())) >= 2
+                status = 1 if usable else 0
 
                 conn.execute(
-                    "INSERT INTO answers(fingerprint,title,options,qtype,answer,votes,status,"
-                    "created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) "
+                    "INSERT INTO answers(fingerprint,title,options,qtype,answer,answer_key,votes,"
+                    "status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) "
                     "ON CONFLICT(fingerprint) DO UPDATE SET "
-                    "answer=excluded.answer, votes=excluded.votes, status=excluded.status, "
+                    "answer=excluded.answer, answer_key=excluded.answer_key,"
+                    " options=excluded.options, qtype=excluded.qtype,"
+                    " votes=excluded.votes, status=excluded.status, "
                     "updated_at=excluded.updated_at",
-                    (fp, title, options, qtype, best_answer, best_votes, status, now, now),
+                    (fp, title, options, qtype, texts.get(best_key) or answer,
+                     best_key, best_votes, status, now, now),
                 )
                 room -= 1
                 global_room -= 1

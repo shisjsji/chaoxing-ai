@@ -227,6 +227,16 @@ def match_option_exact(target: str, options: list) -> str:
     """
     if not target or not options:
         return ""
+    # 模型和题库有时只回一个字母（"B"）。normalize_text 会把开头的字母当成
+    # 选项前缀剥掉，这种答案会变成空串 → 一律判失败 → 重试还是同一个字母 →
+    # 最后走「随机选答案」。所以先在这里按字母直接映射。
+    bare = re.sub(r"^(答案|answer)\s*[:：]?", "", str(target), flags=re.I)
+    bare = re.sub(r"[\s,、，/.]", "", bare).upper()
+    if bare and len(bare) <= 4 and bare.isascii() and bare.isalpha():
+        valid = {str(o)[:1].upper() for o in options}
+        if all(ch in valid for ch in bare):
+            return bare
+
     t_norm = normalize_text(target)
     if not t_norm:
         return ""
@@ -1328,6 +1338,10 @@ class Chaoxing:
                 # 无法获取成绩详情（如接口异常），按原行为返回成功，避免误判失败
                 return StudyResult.SUCCESS
 
+            # 平台在详情页里把每道题的正确答案都列出来了，这是最硬的证据：
+            # 不猜、不投票，直接用它覆盖题库里那道题的答案
+            self._sync_library_from_platform(result_info.get("details") or [], question_items)
+
             score = float(result_info.get("score", 0.0) or 0.0)
             unknown = int(result_info.get("unknown", 0) or 0)
             if result_info.get("all_correct", False):
@@ -1369,6 +1383,45 @@ class Chaoxing:
         # 达到最大重试次数仍未全对
         logger.error(f"章节检测重试 {max_retries + 1} 次仍未全部正确，请人工检查处理")
         return StudyResult.ERROR
+
+    def _sync_library_from_platform(self, details: list, items: list) -> None:
+        """用平台公布的正确答案校准题库。
+
+        详情页会列出每题「我的答案 / 正确答案」，这是外部给出的硬证据，
+        比让模型再猜一次可靠：直接覆盖，不受冲突降级影响。
+        """
+        if not details or not items:
+            return
+        by_title = {}
+        for it in items:
+            title = (it.get("title") or "").strip()
+            if title and it.get("fingerprint"):
+                by_title[title] = it
+
+        fixed = 0
+        try:
+            lib = Library()
+        except Exception as exc:
+            logger.debug("打开题库失败，跳过平台答案校准: {}", exc)
+            return
+
+        for q in details:
+            if not q.get("parse_ok", True):
+                continue
+            correct = (q.get("correct_answer") or "").strip()
+            item = by_title.get((q.get("title") or "").strip())
+            if not correct or not item:
+                continue
+            try:
+                lib.force_answer(item["fingerprint"], item.get("title", ""),
+                                 item.get("options", ""), item.get("qtype", ""), correct)
+                fixed += 1
+            except Exception as exc:
+                logger.debug("写入平台答案失败: {}", exc)
+                continue
+
+        if fixed:
+            logger.info(f"已用平台公布的正确答案校准题库 {fixed} 道题")
 
     def _confirm_library(self, items: list[dict], confidence: str = "high") -> None:
         """上报题目到共享题库。
@@ -1511,6 +1564,7 @@ class Chaoxing:
                             "score": score,
                             "times": 0,
                             "unknown": unknown,
+                            "details": detail,
                         }
                 return None
             except Exception as e:
@@ -1578,6 +1632,7 @@ class Chaoxing:
             "score": latest_score,
             "times": latest_times,
             "unknown": unknown,
+            "details": detail,
         }
 
     def study_read(self, _course, _job, _job_info) -> StudyResult:

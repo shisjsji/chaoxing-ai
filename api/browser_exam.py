@@ -12,7 +12,7 @@ import json
 import re
 import time
 
-from api.exam import ExamQuestion, ask_ai
+from api.exam import ExamQuestion, ask_ai, ask_with_check
 
 TYPE_MAP_CN = {"单选题": "single", "多选题": "multiple", "判断题": "judgement",
                "填空题": "completion", "简答题": "shortanswer",
@@ -399,11 +399,13 @@ def _library():
 _LIB = None
 
 
-def remember(q, info, keys) -> None:
+def remember(q, info, keys, evidence: str = "model") -> None:
     """把这道题和答案记进题库。
 
     存答案原文而不是字母：这场考试的选项是被打乱过的，
     同一个字母换个场次就指向别的选项，只有文本能对上。
+
+    只有经过核对的答案才记成已确认（双答一致），单次模型答案一律待验证。
     """
     try:
         from api.library import fingerprint
@@ -416,9 +418,38 @@ def remember(q, info, keys) -> None:
         answer_text = "、".join(picked) if len(picked) > 1 else picked[0]
         fp = fingerprint(q.title, q.options_text, q.qtype)
         _library().upsert(fp, q.title, q.options_text, q.qtype,
-                          answer_text, source="exam")
+                          answer_text, source="exam",
+                          status=1 if evidence == "ai_agree" else 0,
+                          evidence=evidence)
     except Exception:
         pass
+
+
+def cached_answer(q, fp: str) -> tuple:
+    """先问本地题库，再问共享题库。返回 (答案, 依据来源)。"""
+    try:
+        local = _library().lookup(fp)
+    except Exception:
+        local = None
+    if local:
+        return local, "library"
+
+    try:
+        from api.remote_library import lookup_batch
+
+        shared = lookup_batch([fp]).get(fp) or ""
+    except Exception:
+        shared = ""
+    if not shared:
+        return "", ""
+
+    # 落到本地，下次直接命中，不用每题都联网
+    try:
+        _library().upsert(fp, q.title, q.options_text, q.qtype, shared,
+                          source="share", status=1, evidence="shared")
+    except Exception:
+        pass
+    return shared, "shared"
 
 
 def solve_current(win, log=print):
@@ -465,13 +496,27 @@ def solve_current(win, log=print):
         log(f"  [{prog}] 没解析到选项")
         return "fail"
 
-    keys, answer = [], ""
-    log(f"  [{prog}] 正在问模型…")
-    for _ in range(2):
-        answer = ask_ai(q) or ""
-        keys = pick_keys(info["options"], answer)
+    from api.library import fingerprint
+
+    fp = fingerprint(q.title, q.options_text, q.qtype)
+
+    keys, answer, evidence = [], "", ""
+    hit, where = cached_answer(q, fp)
+    if hit:
+        keys = pick_keys(info["options"], hit)
         if keys:
-            break
+            answer, evidence = hit, where
+            log(f"  [{prog}] 题库命中（{'共享' if where == 'shared' else '本地已确认'}）"
+                f"：{hit[:26]}")
+
+    if not keys:
+        log(f"  [{prog}] 正在问模型（双答核对）…")
+        for _ in range(2):
+            answer, agreed = ask_with_check(q, log)
+            keys = pick_keys(info["options"], answer)
+            if keys:
+                evidence = "ai_agree" if agreed else "model"
+                break
     if not keys:
         log(f"  [{prog}] 没拿到可用答案")
         return "fail"
@@ -489,7 +534,8 @@ def solve_current(win, log=print):
             "return a?a.value:'';})()",
             timeout=3.0, interval=0.2) or ''
         if cur:
-            remember(q, info, keys)
+            if evidence in ("ai_agree", "model"):
+                remember(q, info, keys, evidence)
             log(f"  [{prog}] 已作答 {keys} = {cur!r} <- {answer[:26]}")
             return "ok"
     log(f"  [{prog}] 点了三次都没写进答案")

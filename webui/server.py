@@ -816,6 +816,38 @@ def api_library_remote():
         return jsonify(ok=False, error=f"{type(exc).__name__}: {exc}"), 500
 
 
+@app.post("/api/library/confirm")
+def api_library_confirm():
+    """用户手工确认某道题的答案可信。"""
+    data = request.get_json(force=True, silent=True) or {}
+    fp = str(data.get("fingerprint", "")).strip()
+    if not fp:
+        return jsonify(ok=False, error="缺少 fingerprint"), 400
+    try:
+        from api.library import Library
+
+        Library().confirm(fp, "manual")
+        return jsonify(ok=True, message="已确认")
+    except Exception as exc:
+        return jsonify(ok=False, error=f"{type(exc).__name__}: {exc}"), 500
+
+
+@app.post("/api/library/reject")
+def api_library_reject():
+    """用户手工把某道题标成错的，之后不再复用。"""
+    data = request.get_json(force=True, silent=True) or {}
+    fp = str(data.get("fingerprint", "")).strip()
+    if not fp:
+        return jsonify(ok=False, error="缺少 fingerprint"), 400
+    try:
+        from api.library import Library
+
+        Library().reject(fp)
+        return jsonify(ok=True, message="已标错")
+    except Exception as exc:
+        return jsonify(ok=False, error=f"{type(exc).__name__}: {exc}"), 500
+
+
 @app.post("/api/library/delete")
 def api_library_delete():
     data = request.get_json(force=True, silent=True) or {}

@@ -725,8 +725,30 @@ _PROMPTS = {
 }
 
 
-def ask_ai(question: ExamQuestion) -> Optional[str]:
-    """问模型。带中等思考强度，模型不支持时自动降级重试。"""
+# 客观题才值得双答比对；主观题两次措辞必然不同，比了也没意义
+OBJECTIVE_TYPES = {"single", "multiple", "judgement"}
+
+_SECOND_PASS = (
+    "这是独立复核：请完全重新判读题目，不要假定任何既有答案。"
+    "先在内部逐项比对选项、排除干扰项，再给出最终结果。"
+)
+
+
+def _same_answer(question: "ExamQuestion", a: str, b: str) -> bool:
+    """两次答案是不是同一个。归一化后比较，避开写法差异。"""
+    from api.library import normalize_answer
+
+    key_a = normalize_answer(a, question.qtype, question.options_text)
+    key_b = normalize_answer(b, question.qtype, question.options_text)
+    return bool(key_a) and key_a == key_b
+
+
+def ask_ai(question: ExamQuestion, variant: int = 0) -> Optional[str]:
+    """问模型。带中等思考强度，模型不支持时自动降级重试。
+
+    variant=1 是「独立复核」那一遍：换一套说法、不透露上一次结果，
+    这样两次答案才真的有比对价值。
+    """
     conf = _ai_conf()
     if not (conf.get("endpoint") and conf.get("key")):
         return None
@@ -738,6 +760,8 @@ def ask_ai(question: ExamQuestion) -> Optional[str]:
 
     client = OpenAI(base_url=conf["endpoint"], api_key=conf["key"], timeout=90)
     prompt = _PROMPTS.get(question.qtype, _PROMPTS["shortanswer"])
+    if variant:
+        prompt = _SECOND_PASS + prompt
     user_text = f"题目：{question.title}"
     if question.options:
         user_text += f"\n选项：\n{question.options_text}"
@@ -784,6 +808,36 @@ def ask_ai(question: ExamQuestion) -> Optional[str]:
         except Exception:
             pass
     return text[:2000] if text else None
+
+
+def ask_with_check(question: ExamQuestion, log=print) -> tuple[str, bool]:
+    """问两次独立比对。返回 (答案, 两次是否一致)。
+
+    一致才算「双答确认」；不一致时再问一次取多数，仍然不一致就只当待验证，
+    绝不把它当可信答案。
+    """
+    first = ask_ai(question)
+    if not first:
+        return "", False
+    if question.qtype not in OBJECTIVE_TYPES:
+        return first, False
+
+    second = ask_ai(question, variant=1)
+    if not second:
+        return first, False
+    if _same_answer(question, first, second):
+        log("    双答一致，记为已确认")
+        return first, True
+
+    third = ask_ai(question)
+    if third and _same_answer(question, first, third):
+        log("    双答不一致，第三次支持第一答案，采用")
+        return first, True
+    if third and _same_answer(question, second, third):
+        log("    双答不一致，第三次支持第二答案，采用")
+        return second, True
+    log("    双答不一致且无法定论，本题答案只作待验证")
+    return first, False
 
 
 def resolve_answer(question: ExamQuestion, library: Library) -> tuple[str, str]:
