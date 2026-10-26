@@ -24,6 +24,7 @@
     --r-sm:4px;
     --shadow:0 1px 2px rgba(31,35,40,.06);
     --dur:160ms;
+    --ease:cubic-bezier(.22,.61,.36,1);
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -79,7 +80,7 @@
   #msg.ok{color:var(--c-success)}
   #msg.warn{color:var(--c-warn)}
 
-  .content{flex:1;overflow:auto;padding:13px 17px 22px}
+  .content{flex:1;overflow:auto;padding:13px 17px 22px;container-type:inline-size}
   .page{display:none}
   .page.on{display:block;animation:fadeUp 220ms ease both}
 
@@ -201,12 +202,12 @@
   .list-row:hover{background:var(--c-line-soft)}
   .list-row .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .list-row .name small{color:var(--c-ink3);margin-right:6px}
-  .list-row .bar{flex:0 0 180px;height:6px;border-radius:3px;background:var(--c-line-soft);overflow:hidden}
+  .list-row .bar{flex:0 1 clamp(72px,18%,180px);height:6px;border-radius:3px;background:var(--c-line-soft);overflow:hidden;min-width:0}
   .list-row .bar i{display:block;height:100%;width:0;background:var(--c-primary);transition:width var(--dur) ease}
   .list-row.done .bar i{background:var(--c-success)}
   .list-row.error .bar i{background:var(--c-danger)}
   .list-row.notopen .bar i{background:var(--c-ink3)}
-  .list-row .meta{flex:0 1 auto;min-width:132px;max-width:46%;text-align:right;font-size:11.5px;color:var(--c-ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .list-row .meta{flex:0 0 auto;max-width:46%;text-align:right;font-size:11.5px;color:var(--c-ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .list-row.done .meta{color:var(--c-success)}
   .list-row.error .meta{color:var(--c-danger)}
   .list-row.confirming .meta{color:var(--c-warn)}
@@ -228,8 +229,12 @@
   .state .retry{margin-top:10px}
 
   /* ---------- 概览两栏：把右侧空白用起来 ---------- */
-  .ov-grid{display:grid;grid-template-columns:minmax(0,1fr) 284px;gap:10px;align-items:start}
+  /* 默认单栏：日志面板打开时内容区只有 660px，硬分栏会把章节标题挤成 0 宽 */
+  .ov-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;align-items:start}
   .ov-side{display:flex;flex-direction:column;gap:8px}
+  @container (min-width: 900px){
+    .ov-grid{grid-template-columns:minmax(0,1fr) 268px}
+  }
   .side-card{background:var(--c-surface);border:1px solid var(--c-line);border-radius:var(--r);padding:11px 12px}
   .side-card h3{display:flex;align-items:center;gap:6px;margin:0 0 8px;font-size:12px;font-weight:600;color:var(--c-ink2)}
   .quick{display:flex;flex-direction:column;gap:5px}
@@ -284,6 +289,18 @@
   .wl-dots i.on{background:var(--c-primary)}
   .wl-skip{border:0;background:transparent;color:var(--c-ink3);font-size:12px;cursor:pointer;padding:0}
   .wl-skip:hover{color:var(--c-ink)}
+  /* 教程翻页：插图与文字分批淡入，切页不突兀 */
+  @keyframes illuIn{from{opacity:0;transform:scale(.965)}to{opacity:1;transform:none}}
+  @keyframes stepIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+  .wl-illu svg{animation:illuIn 420ms cubic-bezier(.22,.61,.36,1) both}
+  .wl-body h2{animation:stepIn 260ms cubic-bezier(.22,.61,.36,1) both}
+  .wl-body p{animation:stepIn 300ms 60ms cubic-bezier(.22,.61,.36,1) both}
+  .wl-body li{animation:stepIn 300ms cubic-bezier(.22,.61,.36,1) both}
+  .wl-body li:nth-child(1){animation-delay:120ms}
+  .wl-body li:nth-child(2){animation-delay:180ms}
+  .wl-body li:nth-child(3){animation-delay:240ms}
+  .welcome{transition:opacity 220ms cubic-bezier(.22,.61,.36,1)}
+  .welcome.closing{opacity:0}
   morph-icon{display:inline-flex;vertical-align:-2px}
   .ni{display:inline-flex}
 
@@ -797,13 +814,16 @@ function formData() {
 
 
 /* ---------- 图标：交给 morphicons 做形变 ---------- */
-const ICON_SIZE = 15;
+const ICON_SIZE = 16;
 
 window.setIcon = function (id, name) {
   const icons = window.MORPH_ICONS;
   if (!icons || !icons[name]) return;
   const el = document.getElementById(id);
   if (!el || el.tagName.toLowerCase() !== 'morph-icon') return;
+  // 状态轮询每秒一次，形状没变就别重新触发形变，否则动画一直被重置
+  if (el.dataset.morph === name) return;
+  el.dataset.morph = name;
   try { el.morphTo(icons[name], 'snappy'); } catch (e) {}
 };
 
@@ -816,6 +836,7 @@ window.initIcons = function () {
     if (!icon) return;
     const el = window.morphIcon(icon, { size: ICON_SIZE });
     if (slot.id) el.id = slot.id;
+    el.dataset.morph = slot.dataset.icon;
     el.setAttribute('aria-hidden', 'true');
     slot.replaceWith(el);
   });
@@ -982,8 +1003,10 @@ function openTour() {
 }
 
 function closeTour() {
-  $('welcome').hidden = true;
+  const box = $('welcome');
+  box.classList.add('closing');
   try { localStorage.setItem(TOUR_KEY, 'seen'); } catch (e) {}
+  setTimeout(() => { box.hidden = true; box.classList.remove('closing'); }, 200);
 }
 
 $('wl-next').onclick = () => {
@@ -1065,6 +1088,7 @@ function ensureChap(key, name, course) {
   if (chapMap.has(key)) {
     const rec = chapMap.get(key);
     if (name) { rec.nameEl.textContent = name; rec.courseEl.textContent = course || ''; }
+    if (!rec.row.isConnected) $('chapters').appendChild(rec.row);
     return rec;
   }
   const row = document.createElement('div');
@@ -1164,6 +1188,10 @@ function updateStats(chapters) {
     const box = $('chapters');
     if (!box.querySelector('.state')) {
       box.innerHTML = '';
+      // 行被清掉了，映射表也得清 —— 否则下一次数据回来时
+      // ensureChap 还以为是老行，结果永远不再渲染
+      chapMap.clear();
+      chapSeq = 0;
       box.appendChild(emptyState('还没有任务数据', '到「设置」填好账号和模型，再点右上角「开始运行」。'));
     }
   }

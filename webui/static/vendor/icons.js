@@ -29,9 +29,10 @@ export const Play = [
   ["path", { d: "M8 5v14l11-7z" }],
 ];
 
+// 两根"竖条"要有面积：零宽度的直线没法做区域形变，morphTo 会直接失败
 export const Pause = [
-  ["path", { d: "M9 5v14" }],
-  ["path", { d: "M15 5v14" }],
+  ["path", { d: "M8 5h3v14H8z" }],
+  ["path", { d: "M14 5h3v14h-3z" }],
 ];
 
 export const Stop = [
