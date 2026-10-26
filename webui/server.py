@@ -939,6 +939,8 @@ def api_start():
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
     env["CHAOXING_WEBUI"] = "1"
+    # 子进程单独一个日志文件，避免和 UI 进程抢同一个文件的轮转
+    env["CHAOXING_LOG_FILE"] = "chaoxing.task.log"
     env["PYTHONUNBUFFERED"] = "1"
     if FROZEN:
         cmd = [sys.executable, "--run-task", "-c", str(RUNTIME_CONFIG)]

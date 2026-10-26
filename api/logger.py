@@ -11,6 +11,9 @@ tqdm_stream = sys.stderr
 
 # 由 Web 控制台启动子进程时设置，用于给日志打章节标记并输出结构化进度事件
 WEBUI_MODE = os.environ.get("CHAOXING_WEBUI") == "1"
+# 任务子进程和 UI 进程各写一个文件：两个进程同时写同一个文件时，
+# Windows 上轮转重命名会 WinError 32，之后每条日志都吐一次 traceback
+LOG_FILE = os.environ.get("CHAOXING_LOG_FILE", "chaoxing.log")
 # 标记内部分隔符，课程名与章节名分开传递（普通文本不会出现该控制字符）
 SEP = "\x1f"
 
@@ -111,4 +114,4 @@ if WEBUI_MODE:
     except Exception:
         pass
 logger.add(tqdm_sink, colorize=True, enqueue=True)
-logger.add("chaoxing.log", rotation="10 MB", level="TRACE")
+logger.add(LOG_FILE, rotation="20 MB", retention=5, level="TRACE", enqueue=True)

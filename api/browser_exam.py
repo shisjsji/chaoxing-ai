@@ -420,13 +420,15 @@ def remember(q, info, keys, evidence: str = "model") -> None:
         fp = fingerprint(q.title, q.options_text, q.qtype)
         _library().upsert(fp, q.title, q.options_text, q.qtype,
                           answer_text, source="exam",
-                          status=1 if evidence == "ai_agree" else 0,
-                          evidence=evidence)
+                          # 考试没有平台判分，两次一致只说明模型稳定、不说明答对。
+                          # 一律记待验证，别把可能一致的错答案固化成「已确认」
+                          status=0, evidence=evidence)
     except Exception:
         pass
 
 
 _MISS = {"n": 0}
+_SHARED = {"dead": False}
 
 
 def _should_miss(accuracy: float) -> bool:
@@ -457,11 +459,15 @@ def cached_answer(q, fp: str) -> tuple:
     if local:
         return local, "library"
 
+    if _SHARED["dead"]:
+        return "", ""
     try:
         from api.remote_library import lookup_batch
 
         shared = lookup_batch([fp]).get(fp) or ""
     except Exception:
+        # 共享库超时或报错：这一场不要再逐题重试，否则 85 题就是 85 次超时
+        _SHARED["dead"] = True
         shared = ""
     if not shared:
         return "", ""
@@ -646,6 +652,8 @@ def run_pass(win, log=print, rounds: int = 3, deadline_minutes: float = 25) -> d
     deadline = _t.time() + deadline_minutes * 60
     started = _t.time()
     pace = exam_pace()
+    _MISS["n"] = 0
+    _SHARED["dead"] = False
     stats = {"ok": 0, "fail": 0, "left": 0}
     for rnd in range(rounds):
         if _t.time() > deadline:
@@ -655,6 +663,13 @@ def run_pass(win, log=print, rounds: int = 3, deadline_minutes: float = 25) -> d
         if not card.get("ok"):
             log("读不到答题卡，停止")
             break
+        if rnd == 0 and card.get("total"):
+            # 长卷 + 每题间隔 + 双答会顶到硬上限，中途停住就不会交卷。
+            # 只放宽不收紧，短卷行为不变
+            need = card["total"] * (pace["gap"] + 12) + 120
+            if _t.time() + need > deadline:
+                deadline = _t.time() + need
+                log(f"按题数放宽时间上限：{card['total']} 题约需 {int(need / 60)} 分钟")
         undone = card["undone"]
         log(f"第 {rnd + 1} 轮：共 {card['total']} 题，已答 {card['done']}，未答 {len(undone)}")
         install_guard(win)

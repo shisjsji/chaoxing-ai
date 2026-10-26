@@ -39,7 +39,7 @@ from install_common import (
     taskkill_app,
 )
 
-APP_VERSION = "3.7.14"
+APP_VERSION = "3.7.15"
 
 app = Flask("installer", static_folder=None)
 
@@ -65,12 +65,15 @@ def find_payload() -> Path:
 
 
 def make_shortcut(link: Path, target: Path) -> None:
+    def q(value) -> str:  # PowerShell 单引号里的单引号要写两遍
+        return str(value).replace("'", "''")
+
     script = (
         "$W = New-Object -ComObject WScript.Shell;"
-        f'$S = $W.CreateShortcut("{link}");'
-        f'$S.TargetPath = "{target}";'
-        f'$S.WorkingDirectory = "{target.parent}";'
-        f'$S.IconLocation = "{target}";'
+        f"$S = $W.CreateShortcut('{q(link)}');"
+        f"$S.TargetPath = '{q(target)}';"
+        f"$S.WorkingDirectory = '{q(target.parent)}';"
+        f"$S.IconLocation = '{q(target)}';"
         "$S.Save()"
     )
     subprocess.run(["powershell", "-NoProfile", "-Command", script],

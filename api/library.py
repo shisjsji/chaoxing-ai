@@ -312,7 +312,9 @@ class Library:
                     " ON CONFLICT(fingerprint) DO UPDATE SET answer=excluded.answer,"
                     " answer_key=excluded.answer_key, options=excluded.options,"
                     " qtype=excluded.qtype, status=1, evidence=excluded.evidence,"
-                    " disputes=0, updated_at=excluded.updated_at",
+                    " disputes=0, updated_at=excluded.updated_at"
+                    # 用户手工确认/改过的答案不被自动覆盖（见文件头说明）
+                    " WHERE coalesce(questions.evidence,'') <> 'manual'",
                     (fp, title, options, qtype, answer, key, source, evidence, now, now),
                 )
                 conn.commit()
