@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('webui/templates', 'webui/templates'), ('config_template.ini', '.'), ('resource', 'resource')]
+datas = [('webui/templates', 'webui/templates'), ('webui/static', 'webui/static'), ('config_template.ini', '.'), ('resource', 'resource')]
 binaries = []
 hiddenimports = ['main', 'webui.server', 'pystray', 'PIL', 'api.exam']
 tmp_ret = collect_all('ddddocr')

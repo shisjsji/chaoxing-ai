@@ -810,6 +810,37 @@ def ask_ai(question: ExamQuestion, variant: int = 0) -> Optional[str]:
     return text[:2000] if text else None
 
 
+_PACE_DEFAULTS = {"gap": 3.0, "min_minutes": 0.0, "hold": 0.0, "accuracy": 100}
+
+
+def exam_pace() -> dict:
+    """考试节奏：每题间隔、整卷最少用时、交卷前停顿、目标正确率。
+
+    这几个值只影响考试路径，读不到配置就按默认走，绝不因此中断考试。
+    """
+    pace = dict(_PACE_DEFAULTS)
+    try:
+        parser = configparser.ConfigParser(interpolation=None)
+        parser.read(CONFIG_PATH, encoding="utf-8")
+        if "common" not in parser:
+            return pace
+        section = parser["common"]
+
+        def num(name, default, low, high):
+            try:
+                return max(low, min(high, float(section.get(name, default) or default)))
+            except (TypeError, ValueError):
+                return default
+
+        pace["gap"] = num("exam_answer_gap", 3.0, 0.0, 30.0)
+        pace["min_minutes"] = num("exam_min_minutes", 0.0, 0.0, 180.0)
+        pace["hold"] = num("exam_hold_seconds", 0.0, 0.0, 120.0)
+        pace["accuracy"] = num("target_accuracy", 100.0, 60.0, 100.0)
+    except Exception:
+        pass
+    return pace
+
+
 def ask_with_check(question: ExamQuestion, log=print) -> tuple[str, bool]:
     """问两次独立比对。返回 (答案, 两次是否一致)。
 

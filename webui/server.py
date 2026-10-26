@@ -108,6 +108,10 @@ def _write_config(cfg: dict, path: Path | None = None, with_secrets: bool = Fals
             "work_max_retries": str(cfg.get("work_max_retries", 3)),
             "add_learning_count": "false",
             "target_count": "100",
+            "target_accuracy": str(max(60, min(100, int(cfg.get("target_accuracy", 100) or 100)))),
+            "exam_answer_gap": str(max(0.0, min(30.0, float(cfg.get("exam_answer_gap", 3) or 0)))),
+            "exam_min_minutes": str(max(0.0, min(180.0, float(cfg.get("exam_min_minutes", 0) or 0)))),
+            "exam_hold_seconds": str(max(0.0, min(120.0, float(cfg.get("exam_hold_seconds", 0) or 0)))),
         }
     )
     parser["tiku"].update(
@@ -168,6 +172,11 @@ def _read_config() -> dict:
         "jobs": _num(common.get("jobs"), 4, int),
         "notopen_action": common.get("notopen_action", "retry"),
         "work_redo_enabled": common.get("work_redo_enabled", "false").lower() == "true",
+        "min_interval": _num(tiku.get("min_interval_seconds"), 2, int),
+        "target_accuracy": _num(common.get("target_accuracy"), 100, int),
+        "exam_answer_gap": _num(common.get("exam_answer_gap"), 3.0),
+        "exam_min_minutes": _num(common.get("exam_min_minutes"), 0.0),
+        "exam_hold_seconds": _num(common.get("exam_hold_seconds"), 0.0),
         "submit": tiku.get("submit", "true").lower() == "true",
         "model": tiku.get("model", "deepseek-chat"),
         "vision_model": tiku.get("vision_model", ""),

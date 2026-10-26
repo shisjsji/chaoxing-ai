@@ -9,10 +9,11 @@
 """
 
 import json
+import random
 import re
 import time
 
-from api.exam import ExamQuestion, ask_ai, ask_with_check
+from api.exam import ExamQuestion, ask_ai, ask_with_check, exam_pace
 
 TYPE_MAP_CN = {"单选题": "single", "多选题": "multiple", "判断题": "judgement",
                "填空题": "completion", "简答题": "shortanswer",
@@ -425,6 +426,28 @@ def remember(q, info, keys, evidence: str = "model") -> None:
         pass
 
 
+_MISS = {"n": 0}
+
+
+def _should_miss(accuracy: float) -> bool:
+    """按目标正确率决定这一题要不要故意答错。
+
+    正确率 90% → 每 10 题错 1 题；100% 就是从不故意错。
+    """
+    if accuracy >= 100:
+        return False
+    gap = max(2, int(round(100 / max(0.1, 100 - accuracy))))
+    _MISS["n"] += 1
+    return _MISS["n"] % gap == 0
+
+
+def _wrong_keys(options, keys) -> list:
+    others = [o["key"] for o in options if o["key"] and o["key"] not in keys]
+    if not others:
+        return keys
+    return [random.choice(others)]
+
+
 def cached_answer(q, fp: str) -> tuple:
     """先问本地题库，再问共享题库。返回 (答案, 依据来源)。"""
     try:
@@ -521,6 +544,16 @@ def solve_current(win, log=print):
         log(f"  [{prog}] 没拿到可用答案")
         return "fail"
 
+    # 目标正确率低于 100% 时，按比例故意留错，避免整卷满分显得异常
+    forced_wrong = False
+    pace = exam_pace()
+    if _should_miss(pace["accuracy"]):
+        flipped = _wrong_keys(info["options"], keys)
+        if flipped != keys:
+            keys = flipped
+            forced_wrong = True
+            log(f"  [{prog}] 按目标正确率 {pace['accuracy']:.0f}% 故意答错这题（不入题库）")
+
     # 点完必须回读，没写进去就重试；用轮询等而不是固定延时，
     # 慢页面上也能等到答案真正落到字段里
     for _ in range(3):
@@ -534,7 +567,7 @@ def solve_current(win, log=print):
             "return a?a.value:'';})()",
             timeout=3.0, interval=0.2) or ''
         if cur:
-            if evidence in ("ai_agree", "model"):
+            if evidence in ("ai_agree", "model") and not forced_wrong:
                 remember(q, info, keys, evidence)
             log(f"  [{prog}] 已作答 {keys} = {cur!r} <- {answer[:26]}")
             return "ok"
@@ -611,6 +644,8 @@ def run_pass(win, log=print, rounds: int = 3, deadline_minutes: float = 25) -> d
     import time as _t
 
     deadline = _t.time() + deadline_minutes * 60
+    started = _t.time()
+    pace = exam_pace()
     stats = {"ok": 0, "fail": 0, "left": 0}
     for rnd in range(rounds):
         if _t.time() > deadline:
@@ -659,6 +694,8 @@ def run_pass(win, log=print, rounds: int = 3, deadline_minutes: float = 25) -> d
             elif status == "fail":
                 stats["fail"] += 1
 
+            if pace["gap"]:
+                _t.sleep(pace["gap"])
             if not next_question(win):
                 log("已到最后一题")
                 break
@@ -677,6 +714,15 @@ def run_pass(win, log=print, rounds: int = 3, deadline_minutes: float = 25) -> d
     # 只有确认全部作答才交卷；有未答就留着让人处理，绝不交白卷
     stats["submitted"] = False
     if stats.get("left", 1) == 0:
+        # 太快交卷也像机器人：先补足整卷最少用时，再停顿一下
+        if pace["min_minutes"]:
+            remain = pace["min_minutes"] * 60 - (_t.time() - started)
+            if remain > 1:
+                log(f"按要求放慢节奏：再等 {int(remain)} 秒后交卷")
+                _t.sleep(remain)
+        if pace["hold"]:
+            log(f"交卷前停顿 {int(pace['hold'])} 秒")
+            _t.sleep(pace["hold"])
         stats["submitted"] = submit_paper(win, log)
     else:
         log(f"还有 {stats.get('left', 0)} 题没答完，不自动交卷")
