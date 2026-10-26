@@ -22,7 +22,7 @@ import requests
 
 from api.logger import logger
 
-APP_VERSION = "3.7.16"
+APP_VERSION = "3.7.17"
 APP_NAME = "超星AI答题"
 
 CHECK_TIMEOUT = 8
@@ -34,6 +34,11 @@ REQUIRED_ENTRIES = ("_internal/python312.dll", "_internal/base_library.zip")
 FAILURE_NOTE = "update_failed.txt"
 
 PENDING_META = "update_pending.json"
+# 更新脚本运行期间存在，用来挡住这段时间里的重复启动
+LOCK_NAME = "update.lock"
+LOCK_MAX_AGE = 15 * 60
+# 解压好的新版本先放这里，等程序退出后由脚本做目录交换
+STAGE_DIR = "_update_tmp"
 
 LOG_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.log")
 PS1_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.ps1")
@@ -41,6 +46,14 @@ PS1_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.ps1")
 # 内置更新日志：断网时也能在界面里看到本版改了什么。
 # 新增版本时同步更新 CHANGELOG.md 与服务端 version.json 的 highlights。
 RELEASES = {
+    "3.7.17": [
+        "修复「立即重启」后程序关了却打不开：更新包改为程序还开着时解压，界面能看到百分比",
+        "同一个包解压从 50 秒降到 7 秒（不再用 PowerShell 的 Expand-Archive）",
+        "更新期间写锁文件，这段时间双击程序会提示「正在安装更新」，不会把文件抢走",
+        "目录交换遇到占用会重试 6 次；上次更新失败会弹窗说明",
+        "只允许开一个程序：重复双击提示「已经在运行」，不会再开第二个窗口",
+        "每次点击、任务进程启停、界面启停都写进日志；日志面板新增「反馈」入口",
+    ],
     "3.7.16": [
         "新增「关于」页：介绍作者与本程序，头像与链接都在里面，Ctrl+5 也能打开",
         "侧栏图标改成形变动画：切页和悬停时图标会过渡到强调态，不再一下跳过去",
@@ -287,6 +300,63 @@ def load_pending() -> dict:
     return meta
 
 
+def update_in_progress() -> bool:
+    """更新脚本正在换文件吗？
+
+    锁文件由脚本创建、结束前删除。超过 15 分钟当成上次崩了留下的残留，
+    删掉并放行 —— 不能因为一个残留文件让程序永远打不开。
+    """
+    path = os.path.join(base_dir(), LOCK_NAME)
+    try:
+        if not os.path.exists(path):
+            return False
+        if time.time() - os.path.getmtime(path) > LOCK_MAX_AGE:
+            os.remove(path)
+            return False
+        return True
+    except OSError:
+        return False
+
+
+def prepare_package(zip_path: str, progress=None) -> str:
+    """把更新包解压到安装目录下的暂存目录，返回该目录。
+
+    这件事必须由还开着的程序自己做：PowerShell 的 Expand-Archive 解同一个
+    188MB 的包要 50 秒，Python 只要 7 秒，而且这里能把进度显示给用户。
+    解压完再由退出后的脚本做目录交换，那一步只是改名，一两秒。
+    """
+    problems = inspect_package(zip_path)
+    if problems:
+        raise ValueError("更新包不完整：" + "；".join(problems))
+
+    target = os.path.join(base_dir(), STAGE_DIR)
+    free = shutil.disk_usage(base_dir()).free
+    if free < 900 * 1024 * 1024:
+        raise ValueError(f"程序所在磁盘剩余空间不足（{free // 1024 // 1024} MB），"
+                         "解压需要约 900 MB")
+
+    if os.path.exists(target):
+        shutil.rmtree(target, ignore_errors=True)
+    os.makedirs(target, exist_ok=True)
+
+    with zipfile.ZipFile(zip_path) as zf:
+        members = zf.infolist()
+        total = len(members) or 1
+        for index, member in enumerate(members, 1):
+            zf.extract(member, target)
+            if progress and (index % 40 == 0 or index == total):
+                try:
+                    progress(index, total)
+                except Exception:
+                    pass
+
+    for entry in REQUIRED_ENTRIES:
+        if not os.path.exists(os.path.join(target, entry.replace("/", os.sep))):
+            raise ValueError(f"解压结果里缺少 {entry}")
+    logger.info(f"更新包已解压到 {target}")
+    return target
+
+
 def clear_pending() -> None:
     try:
         os.remove(os.path.join(base_dir(), PENDING_META))
@@ -389,6 +459,7 @@ def _build_script(zip_path: str, app_dir: str, exe_name: str) -> str:
     note = _ps_quote(FAILURE_NOTE)
     meta = _ps_quote(PENDING_META)
     meta_legacy = _ps_quote("uninstall.exe")
+    lock = _ps_quote(LOCK_NAME)
     log = _ps_quote(LOG_PATH)
     process = _ps_quote(os.path.splitext(exe_name)[0])
 
@@ -401,12 +472,15 @@ $zip  = '{zip_q}'
 $exe  = '{exe}'
 $proc = '{process}'
 $note = Join-Path $app '{note}'
+$lock = Join-Path $app '{lock}'
 $tmp  = Join-Path $app '_update_tmp'
 $old  = Join-Path $app '_internal_old'
 $dest = Join-Path $app '_internal'
 $exePath = Join-Path $app $exe
 
 Note '=== 更新开始 ==='
+# 锁住：这段期间用户再双击程序会被挡住，避免抢占 _internal 让替换失败
+try {{ Get-Date -Format 'o' | Out-File -LiteralPath $lock -Encoding utf8 }} catch {{}}
 
 try {{
     # 1) 等主程序（含子进程）彻底退出
@@ -422,12 +496,10 @@ try {{
     }}
     Note '主程序已退出'
 
-    # 2) 解压到临时目录（与正式目录同盘，交换是改名操作，很快）
-    if (Test-Path -LiteralPath $tmp) {{ Remove-Item -LiteralPath $tmp -Recurse -Force }}
-    Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
-    Note '解压完成'
+    # 2) 新版已经由程序自己解压好了（那边只要 7 秒，且能显示进度）
+    Note '检查准备好的文件'
 
-    # 3) 校验解压结果
+    # 3) 校验目录
     $newExe  = Join-Path $tmp $exe
     $newDll  = Join-Path $tmp '_internal\\python312.dll'
     $newBase = Join-Path $tmp '_internal\\base_library.zip'
@@ -439,7 +511,19 @@ try {{
 
     # 4) 备份旧目录后交换，失败则回滚
     if (Test-Path -LiteralPath $old) {{ Remove-Item -LiteralPath $old -Recurse -Force }}
-    Move-Item -LiteralPath $dest -Destination $old -Force
+    # 目录偶尔被残留进程占着（杀软扫描、WebView2 收尾），等几秒再试
+    $moved = $false
+    for ($k = 0; $k -lt 6; $k++) {{
+        try {{
+            Move-Item -LiteralPath $dest -Destination $old -Force
+            $moved = $true
+            break
+        }} catch {{
+            Note "旧目录被占用，2 秒后重试（第 $($k + 1) 次）: $_"
+            Start-Sleep -Seconds 2
+        }}
+    }}
+    if (-not $moved) {{ throw '旧目录被其他进程占用，无法替换' }}
     try {{
         Move-Item -LiteralPath $newDir -Destination $dest -Force
         Copy-Item -LiteralPath $newExe -Destination $exePath -Force
@@ -480,6 +564,8 @@ try {{
     $meta = Join-Path $app '{meta}'
     if (Test-Path -LiteralPath $meta) {{ Remove-Item -LiteralPath $meta -Force -ErrorAction SilentlyContinue }}
     Note '更新成功，重新启动'
+    # 先解锁再启动：新进程看到锁会以为还在更新，直接退出
+    Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue
     Start-Process -FilePath $exePath -WorkingDirectory $app
     Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
 }}
@@ -489,31 +575,26 @@ catch {{
         "更新失败，已保留原版本。`r`n时间：$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`r`n原因：$_`r`n详细日志：$log" |
             Out-File -LiteralPath $note -Encoding utf8
         if (Test-Path -LiteralPath $tmp) {{ Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }}
+        Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue
         Start-Process -FilePath $exePath -WorkingDirectory $app
     }} catch {{}}
 }}
 """
 
 
-def apply_and_restart(zip_path: str) -> bool:
-    """生成独立更新脚本：等主程序退出后校验、替换并重启。"""
+def apply_and_restart(stage_dir: str) -> bool:
+    """生成独立更新脚本：等主程序退出后把准备好的新版换上去并重启。"""
     if not getattr(sys, "frozen", False):
-        logger.warning(f"开发模式下不执行自动替换，更新包位于: {zip_path}")
+        logger.warning(f"开发模式下不执行自动替换，已解压到: {stage_dir}")
         return False
 
-    problems = inspect_package(zip_path)
-    if problems:
-        raise ValueError("更新包不完整：" + "；".join(problems))
+    if not os.path.isdir(stage_dir):
+        raise ValueError("没有找到已解压的更新文件，请重新下载")
 
     app_dir = base_dir()
     exe_name = os.path.basename(sys.executable)
 
-    free = shutil.disk_usage(app_dir).free
-    if free < 900 * 1024 * 1024:
-        raise ValueError(f"程序所在磁盘剩余空间不足（{free // 1024 // 1024} MB），"
-                         "解压需要约 900 MB")
-
-    script = _build_script(zip_path, app_dir, exe_name)
+    script = _build_script("", app_dir, exe_name)
     # UTF-8 BOM 是关键：PowerShell 靠 BOM 识别中文路径，缺了会按 ANSI 解析成乱码
     with open(PS1_PATH, "w", encoding="utf-8-sig", newline="\r\n") as fp:
         fp.write(script)

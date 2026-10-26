@@ -5,6 +5,7 @@
 带 --run-task 时进入任务子进程模式。
 """
 
+import ctypes
 import os
 import socket
 import subprocess
@@ -14,6 +15,40 @@ import time
 
 HOST, PORT = "127.0.0.1", 5000
 URL = f"http://{HOST}:{PORT}"
+
+
+# 只允许开一个界面进程。用文件锁而不是命名互斥量：互斥量要过 ctypes
+# 的参数转换，打包后拿不准；文件锁由系统在内核里持有，进程被杀也会自动释放，
+# 不会留下需要手工清理的残留。
+LOCK_FILE = "ui.lock"
+_LOCK_HANDLE = []
+
+
+def already_running() -> bool:
+    """已经开着一个就返回 True。锁文件句柄留在 _LOCK_HANDLE 里，退出才会释放。"""
+    try:
+        import msvcrt
+
+        path = os.path.join(base_dir(), LOCK_FILE)
+        fp = open(path, "a+")
+        try:
+            msvcrt.locking(fp.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            fp.close()
+            return True
+        _LOCK_HANDLE.append(fp)
+        return False
+    except Exception:
+        # 拿不到锁文件也不能拦住启动，宁可开两个也别打不开
+        return False
+
+
+def notify(text: str, title: str = "超星 AI 答题") -> None:
+    """窗口还没建起来时只能走系统消息框。"""
+    try:
+        ctypes.windll.user32.MessageBoxW(None, text, title, 0x40)
+    except Exception:
+        pass
 
 
 def base_dir() -> str:
@@ -125,6 +160,12 @@ def launch_window() -> None:
     def quit_app(*_args) -> None:
         state["quitting"] = True
         try:
+            from webui.server import append_ui_log
+
+            append_ui_log("界面退出")
+        except Exception:
+            pass
+        try:
             if state["tray"] is not None:
                 state["tray"].stop()
         except Exception:
@@ -202,9 +243,42 @@ def _open_browser() -> None:
 def main() -> None:
     os.chdir(base_dir())
 
+    from api.updater import pending_failure, update_in_progress
+
+    # 更新脚本正在换文件：这时候再开一个会把 _internal 占住，替换直接失败
+    if update_in_progress():
+        notify("正在安装更新，请等它自己打开（一般十几秒）。\n\n"
+               "现在手动打开会打断替换，更新会前功尽弃。")
+        return
+
+    if already_running():
+        try:
+            from api.logger import logger
+
+            logger.info("检测到已有一个实例在运行，本次启动退出")
+        except Exception:
+            pass
+        notify("程序已经在运行了。\n\n"
+               "如果没看到窗口，双击右下角托盘里的图标就能打开。")
+        return
+
+    # 上次更新失败的说明读一次就删，弹窗比顶部提示条更不会漏看
+    try:
+        failure = pending_failure()
+        if failure:
+            notify("上次更新没有完成，当前还是旧版本。\n\n" + failure[:600])
+    except Exception:
+        pass
+
     if not port_in_use():
         threading.Thread(target=run_server, daemon=True).start()
         wait_ready()
+        try:
+            from webui.server import append_ui_log
+
+            append_ui_log("界面已启动")
+        except Exception:
+            pass
 
     try:
         launch_window()

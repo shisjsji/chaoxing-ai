@@ -742,6 +742,7 @@
     <div class="logs-head">
       <span>日志</span>
       <span class="spacer"></span>
+      <button class="btn text" id="btnLogFeedback" title="把当前日志一起发给我">反馈</button>
       <button class="btn text" id="btnLogClear">清空</button>
       <button class="btn text" id="btnSysOnly">只看系统</button>
     </div>
@@ -935,6 +936,33 @@ function formData() {
   };
 }
 
+
+/* ---------- 操作日志：每次点击都进日志面板 ---------- */
+let lastClickLabel = '';
+let lastClickAt = 0;
+
+function currentPageLabel() {
+  const active = document.querySelector('.nav-item[aria-current="page"]');
+  return active ? (active.textContent || '').trim() : '';
+}
+
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('button, a, .nav-item, [data-log]');
+  if (!el) return;
+  // 只取 id、页面名或按钮文字；输入框里的内容一律不碰
+  let label = el.dataset.log || (el.textContent || '').trim() || el.id || el.dataset.page;
+  label = String(label).replace(/\s+/g, ' ').slice(0, 40);
+  if (!label) return;
+  const now = Date.now();
+  if (label === lastClickLabel && now - lastClickAt < 400) return;
+  lastClickLabel = label;
+  lastClickAt = now;
+  fetch('/api/client-log', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({action: label, page: currentPageLabel()})
+  }).catch(() => {});
+}, true);
 
 /* ---------- 图标：交给 morphicons 做形变 ---------- */
 const ICON_SIZE = 16;
@@ -1193,6 +1221,11 @@ document.querySelectorAll('#page-settings input').forEach(el => {
     if (e.key === 'Enter') { e.preventDefault(); $('btnSave').click(); }
   });
 });
+
+$('btnLogFeedback').onclick = () => {
+  $('feedback-logs').checked = true;
+  $('feedback-dialog').showModal();
+};
 
 $('btnLogClear').onclick = () => {
   if (!$('logs').childElementCount) return;
@@ -1887,6 +1920,9 @@ function renderUpdateProgress(d) {
     go.disabled = false; go.textContent = '立即重启';
     later.disabled = false; later.textContent = '稍后';
     stopUpdatePolling();
+  } else if (d.stage === 'preparing') {
+    go.disabled = true; go.textContent = '正在准备…';
+    later.disabled = true;
   } else if (d.stage === 'restarting') {
     go.disabled = true; go.textContent = '正在重启…';
     later.disabled = true;
@@ -1961,14 +1997,17 @@ window.addEventListener('unhandledrejection', ev => {
 async function restartUpdate(source) {
   const btn = $(source);
   const label = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '正在重启…'; }
-  renderUpdateProgress({stage: 'restarting', percent: 100,
-    message: '正在退出并安装，几秒后程序会自动重开'});
+  if (btn) { btn.disabled = true; btn.textContent = '正在准备…'; }
+  // 解压这一步在程序还开着的时候做，进度会实时显示，解完才退出
+  renderUpdateProgress({stage: 'preparing', percent: 0,
+    message: '正在解压更新包，大约十几秒'});
+  startUpdatePolling();
   try {
     await post('/api/update/restart', {});
   } catch (e) {
-    renderUpdateProgress({stage: 'error', percent: 100, error: e.message});
+    renderUpdateProgress({stage: 'error', percent: 0, error: e.message});
     if (btn) { btn.disabled = false; btn.textContent = label; }
+    stopUpdatePolling();
   }
 }
 

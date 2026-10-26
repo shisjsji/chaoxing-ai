@@ -263,6 +263,7 @@ def quit_for_update() -> None:
     def run() -> None:
         # 先让 /api/update/restart 的响应发出去，再动窗口
         time.sleep(0.6)
+        _append_log("准备退出以安装更新", kind="ui")
         try:
             win = _exam_browser.get("window")
             if win is not None:
@@ -508,6 +509,8 @@ def _pump(proc: subprocess.Popen) -> None:
                         _apply_event(payload)
     finally:
         code = proc.wait()
+        _append_log(f"任务进程已结束，退出码 {code}",
+                    kind="ui", level="err" if code else "")
         with _lock:
             if _state["proc"] is proc:
                 _state["proc"] = None
@@ -762,25 +765,41 @@ def api_update_restart():
         return jsonify(ok=False, error="没有已下载的更新包，请重新检查更新"), 400
 
     with _lock:
-        if _update_state["stage"] == "restarting":
-            return jsonify(ok=False, error="已经在重启了"), 409
-        _update_state.update(stage="restarting", percent=100, message="正在退出并安装，稍等")
+        if _update_state["stage"] in ("preparing", "restarting"):
+            return jsonify(ok=False, error="已经在准备了"), 409
+        _update_state.update(stage="preparing", percent=0, error="",
+                             message="正在解压更新包")
 
-    try:
-        restarted = apply_and_restart(pending["zip"])
-    except Exception as exc:
-        with _lock:
-            _update_state.update(stage="error", error=f"{type(exc).__name__}: {exc}",
-                                 message="安装启动失败，已保留当前版本")
-        return jsonify(ok=False, error=f"{type(exc).__name__}: {exc}"), 500
+    def run() -> None:
+        from api.updater import prepare_package
 
-    if not restarted:
-        with _lock:
-            _update_state.update(stage="ready", percent=100,
-                                 message="开发模式下不自动替换，更新包已就绪")
-        return jsonify(ok=False, error="开发模式下不执行替换"), 400
-    quit_for_update()
-    return jsonify(ok=True, message="正在重启安装")
+        def progress(done: int, total: int) -> None:
+            with _lock:
+                _update_state.update(percent=int(done * 100 / max(1, total)),
+                                     message=f"正在解压 {done}/{total} 个文件")
+
+        try:
+            stage_dir = prepare_package(pending["zip"], progress=progress)
+            with _lock:
+                _update_state.update(stage="restarting", percent=100,
+                                     message="正在退出并安装，几秒后程序会自动重开")
+            restarted = apply_and_restart(stage_dir)
+        except Exception as exc:
+            with _lock:
+                _update_state.update(stage="error", error=f"{type(exc).__name__}: {exc}",
+                                     message="安装启动失败，已保留当前版本")
+            _append_log(f"更新失败：{type(exc).__name__}: {exc}")
+            return
+
+        if not restarted:
+            with _lock:
+                _update_state.update(stage="ready", percent=100,
+                                     message="开发模式下不自动替换，更新包已就绪")
+            return
+        quit_for_update()
+
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify(ok=True, message="正在准备更新")
 
 
 @app.get("/api/update/progress")
@@ -959,6 +978,7 @@ def api_start():
         bufsize=1,
         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
     )
+    _append_log(f"任务进程已启动（PID {proc.pid}）", kind="ui")
     with _lock:
         _state["proc"] = proc
         _state["stopping"] = False
@@ -1088,6 +1108,27 @@ def api_stop():
         return jsonify(ok=False, error="当前没有运行中的任务"), 400
     _kill_tree(proc)
     return jsonify(ok=True, message="已发送停止指令")
+
+
+@app.post("/api/client-log")
+def api_client_log():
+    """前端上报一次操作，写进日志流。
+
+    只记动作名（按钮的 id、页面名或按钮文字），不碰输入框内容，
+    所以密码、API Key、题目答案都不会进日志。
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    action = str(data.get("action", "")).strip()[:60]
+    page = str(data.get("page", "")).strip()[:20]
+    if not action:
+        return jsonify(ok=False, error="缺少 action"), 400
+    _append_log(f"点击 {page + ' / ' if page else ''}{action}", kind="ui")
+    return jsonify(ok=True)
+
+
+def append_ui_log(text: str) -> None:
+    """给桌面入口写界面启停这类日志用。"""
+    _append_log(text, kind="ui")
 
 
 @app.get("/api/logs")
