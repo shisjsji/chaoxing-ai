@@ -39,7 +39,7 @@ from install_common import (
     taskkill_app,
 )
 
-APP_VERSION = "3.7.15"
+APP_VERSION = "3.7.16"
 
 app = Flask("installer", static_folder=None)
 

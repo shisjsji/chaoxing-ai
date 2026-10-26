@@ -301,6 +301,46 @@
   .wl-body li:nth-child(3){animation-delay:240ms}
   .welcome{transition:opacity 220ms cubic-bezier(.22,.61,.36,1)}
   .welcome.closing{opacity:0}
+  /* ---------- 关于 ---------- */
+  .about-hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:14px 0 20px}
+  .about-avatar{
+    width:86px;height:86px;border-radius:50%;object-fit:cover;display:block;
+    border:1px solid var(--c-line);box-shadow:0 8px 22px -12px rgba(31,35,40,.45);
+    animation:avatarIn 460ms var(--ease) both;
+  }
+  @keyframes avatarIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
+  .about-name{margin:13px 0 0;font-size:19px;font-weight:600;letter-spacing:-.012em;
+    animation:stepIn 300ms 60ms var(--ease) both}
+  .about-role{margin:5px 0 0;font-size:12px;color:var(--c-ink3);
+    animation:stepIn 300ms 120ms var(--ease) both}
+  .about-intro{margin:11px auto 0;max-width:46ch;font-size:12.5px;color:var(--c-ink2);
+    line-height:1.78;animation:stepIn 320ms 180ms var(--ease) both}
+  .about-links{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:15px;
+    animation:stepIn 320ms 240ms var(--ease) both}
+  .chip{
+    display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:999px;
+    border:1px solid var(--c-line);background:var(--c-surface);color:var(--c-ink2);
+    font-size:12px;cursor:pointer;white-space:nowrap;
+    transition:color var(--dur) ease,border-color var(--dur) ease,background var(--dur) ease;
+  }
+  .chip:hover{color:var(--c-primary);border-color:#cfe0ff;background:var(--c-primary-soft)}
+
+  .about-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:8px;margin-top:4px}
+  .about-card{animation:stepIn 340ms var(--ease) both;transition:box-shadow var(--dur) ease,border-color var(--dur) ease}
+  .about-card:nth-child(1){animation-delay:300ms}
+  .about-card:nth-child(2){animation-delay:370ms}
+  .about-card:nth-child(3){animation-delay:440ms}
+  .about-card:hover{border-color:#c9d6e6;box-shadow:0 8px 22px -18px rgba(31,35,40,.5)}
+  .about-card h3{margin:0 0 9px;font-size:12px;font-weight:600;color:var(--c-ink2)}
+  .about-list{margin:0;padding-left:15px;font-size:12.5px;color:var(--c-ink2);line-height:1.8}
+  .about-list li{margin:2px 0}
+  .about-list li::marker{color:var(--c-primary)}
+  .about-list a{color:var(--c-primary)}
+  .about-foot{
+    display:flex;align-items:center;justify-content:center;gap:10px;margin-top:16px;
+    font-size:11.5px;color:var(--c-ink3);animation:stepIn 340ms 520ms var(--ease) both;
+  }
+  .about-foot b{color:var(--c-ink2);font-weight:600}
   morph-icon{display:inline-flex;vertical-align:-2px}
   .ni{display:inline-flex}
 
@@ -391,10 +431,11 @@
 <div class="app" id="app">
   <aside class="nav">
     <div class="nav-brand">超星 AI 答题<small>学习通任务助手</small></div>
-    <button class="nav-item" data-page="overview" aria-current="page"><span class="ni" data-icon="Grid"></span>概览</button>
-    <button class="nav-item" data-page="exams"><span class="ni" data-icon="Exam"></span>考试</button>
-    <button class="nav-item" data-page="library"><span class="ni" data-icon="Library"></span>题库</button>
-    <button class="nav-item" data-page="settings"><span class="ni" data-icon="Sliders"></span>设置</button>
+    <button class="nav-item" data-page="overview" aria-current="page"><span class="ni" id="ico-nav-overview" data-icon="Grid" data-on="GridOn"></span>概览</button>
+    <button class="nav-item" data-page="exams"><span class="ni" id="ico-nav-exams" data-icon="Exam" data-on="ExamOn"></span>考试</button>
+    <button class="nav-item" data-page="library"><span class="ni" id="ico-nav-library" data-icon="Library" data-on="LibraryOn"></span>题库</button>
+    <button class="nav-item" data-page="settings"><span class="ni" id="ico-nav-settings" data-icon="Sliders" data-on="SlidersOn"></span>设置</button>
+    <button class="nav-item" data-page="about"><span class="ni" id="ico-nav-about" data-icon="Info" data-on="InfoOn"></span>关于</button>
     <div class="nav-foot">
       <div id="nav-account">未配置账号</div>
       <div id="nav-version">—</div>
@@ -581,6 +622,56 @@
           <p class="hint">密码和 Key 留空表示沿用上次保存的值。</p>
         </div>
       </section>
+
+      <!-- 关于 -->
+      <section class="page" id="page-about">
+        <div class="about-hero">
+          <img class="about-avatar" src="/static/avatar.jpg" alt="凌乱的风&amp;">
+          <h1 class="about-name">凌乱的风&amp;</h1>
+          <p class="about-role">18 岁 · 信息安全技术 · 大一</p>
+          <p class="about-intro">白天上课，晚上写点小工具。这个程序最初只是想把刷课的几个小时还给自己，后来慢慢变成了现在这样。</p>
+          <div class="about-links">
+            <a class="chip" href="https://github.com/shisjsji" target="_blank" rel="noopener">GitHub</a>
+            <a class="chip" href="https://github.com/shisjsji/chaoxing-ai" target="_blank" rel="noopener">项目仓库</a>
+            <a class="chip" href="https://lingluandf.online/" target="_blank" rel="noopener">个人博客</a>
+            <a class="chip" href="https://chaoxingxxt.lingluandf.online/" target="_blank" rel="noopener">项目官网</a>
+            <button class="chip" id="about-kuan">酷安 30432128</button>
+          </div>
+        </div>
+
+        <div class="about-grid">
+          <div class="card about-card">
+            <h3>这个程序做什么</h3>
+            <ul class="about-list">
+              <li>在桌面端跑，账号和 API Key 用 Windows 加密存在本机</li>
+              <li>答题先查题库，只有平台判过满分、多人给出同一答案，或者你自己确认过的才会被复用</li>
+              <li>考试在内嵌浏览器里作答，图形验证码和人脸验证由你本人完成</li>
+            </ul>
+          </div>
+          <div class="card about-card">
+            <h3>用到的技术</h3>
+            <ul class="about-list">
+              <li>Python 3.12 与 Flask，界面由 pywebview 嵌入 WebView2</li>
+              <li>题库存 SQLite，指纹用题干加排序后的选项一起算</li>
+              <li>答题接任意 OpenAI 兼容接口，DeepSeek 开箱能用</li>
+            </ul>
+          </div>
+          <div class="card about-card">
+            <h3>遇到问题</h3>
+            <ul class="about-list">
+              <li>点右上角「反馈」，最近的日志会一起发过来</li>
+              <li>也可以到 <a href="https://github.com/shisjsji/chaoxing-ai/issues" target="_blank" rel="noopener">GitHub 开 issue</a></li>
+              <li>设置页可以再看一遍新手教程</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="about-foot">
+          <span>当前版本 <b id="about-version">—</b></span>
+          <span>·</span>
+          <a class="chip" href="https://github.com/shisjsji/chaoxing-ai/releases" target="_blank" rel="noopener" style="height:24px;font-size:11.5px">历史版本</a>
+        </div>
+      </section>
     </div>
   </main>
 
@@ -726,10 +817,42 @@ document.querySelectorAll('.nav-item').forEach(btn => {
   btn.onclick = () => switchPage(btn.dataset.page);
 });
 
+/* 导航图标成对：data-icon 是常态，data-on 是强调态，切换与悬停时形变 */
+function navIcon(page, on) {
+  const slot = document.getElementById('ico-nav-' + page);
+  if (!slot) return;
+  const name = on ? slot.dataset.morphOn : slot.dataset.morphOff;
+  if (name) window.setIcon('ico-nav-' + page, name);
+}
+
+function syncNavIcons(current) {
+  document.querySelectorAll('.nav-item').forEach(b => {
+    const page = b.dataset.page;
+    navIcon(page, page === current);
+  });
+}
+
+let navHoverWired = false;
+function wireNavHover() {
+  if (navHoverWired) return;
+  navHoverWired = true;
+  document.querySelectorAll('.nav-item').forEach(b => {
+    const page = b.dataset.page;
+    b.addEventListener('mouseenter', () => {
+      if (b.getAttribute('aria-current') !== 'page') navIcon(page, true);
+    });
+    b.addEventListener('mouseleave', () => {
+      if (b.getAttribute('aria-current') !== 'page') navIcon(page, false);
+    });
+  });
+}
+
 function switchPage(page) {
   document.querySelectorAll('.nav-item').forEach(b =>
     b.setAttribute('aria-current', b.dataset.page === page ? 'page' : 'false'));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('on', p.id === 'page-' + page));
+  syncNavIcons(page);
+  wireNavHover();
   if (page === 'library') loadLibrary();
   if (page === 'exams' && !examCourses.length) loadExams();
 }
@@ -837,11 +960,16 @@ window.initIcons = function () {
     const el = window.morphIcon(icon, { size: ICON_SIZE });
     if (slot.id) el.id = slot.id;
     el.dataset.morph = slot.dataset.icon;
+    el.dataset.morphOff = slot.dataset.icon;
+    if (slot.dataset.on) el.dataset.morphOn = slot.dataset.on;
     el.setAttribute('aria-hidden', 'true');
     slot.replaceWith(el);
   });
   syncLogsIcon();
   window.syncStartIcon();
+  const current = document.querySelector('.nav-item[aria-current="page"]');
+  if (current) syncNavIcons(current.dataset.page);
+  wireNavHover();
 };
 
 window.syncStartIcon = function () {
@@ -1517,6 +1645,14 @@ function startExamPolling() {
   }, 1500);
 }
 
+$('about-kuan').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText('30432128');
+    setMsg('酷安号已复制', 'ok');
+  } catch (e) {
+    setMsg('复制失败，酷安号是 30432128', 'warn');
+  }
+};
 $('btnFeedback').onclick = () => {
   $('feedback-dialog').showModal();
 };
@@ -1909,9 +2045,9 @@ document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
   if (ctrl && e.key === 'Enter') { e.preventDefault(); if (!$('btnStart').disabled) $('btnStart').click(); }
   if (ctrl && e.key.toLowerCase() === 's') { e.preventDefault(); $('btnSave').click(); }
-  if (ctrl && ['1','2','3','4'].includes(e.key)) {
+  if (ctrl && ['1','2','3','4','5'].includes(e.key)) {
     e.preventDefault();
-    switchPage(['overview','exams','library','settings'][Number(e.key) - 1]);
+    switchPage(['overview','exams','library','settings','about'][Number(e.key) - 1]);
   }
   if (e.key === 'Escape') $('app').classList.add('nologs');
 });
@@ -1954,6 +2090,8 @@ document.addEventListener('keydown', e => {
     if (c.version) {
       $('ver-current').textContent = c.version;
       $('nav-version').textContent = 'v' + c.version;
+      const aboutVer = $('about-version');
+      if (aboutVer) aboutVer.textContent = 'v' + c.version;
     }
     $('nav-account').textContent = c.username || '未配置账号';
   } catch (e) {}

@@ -22,7 +22,7 @@ import requests
 
 from api.logger import logger
 
-APP_VERSION = "3.7.15"
+APP_VERSION = "3.7.16"
 APP_NAME = "超星AI答题"
 
 CHECK_TIMEOUT = 8
@@ -41,6 +41,11 @@ PS1_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.ps1")
 # 内置更新日志：断网时也能在界面里看到本版改了什么。
 # 新增版本时同步更新 CHANGELOG.md 与服务端 version.json 的 highlights。
 RELEASES = {
+    "3.7.16": [
+        "新增「关于」页：介绍作者与本程序，头像与链接都在里面，Ctrl+5 也能打开",
+        "侧栏图标改成形变动画：切页和悬停时图标会过渡到强调态，不再一下跳过去",
+        "关于页的卡片与链接会随窗口宽度自适应，进入时有分批淡入",
+    ],
     "3.7.15": [
         "修复长时间刷课后明显卡顿：任务子进程和界面进程同时写同一个日志文件，Windows 上轮转失败，之后每条日志都吐一次报错",
         "修复长卷考试跑不完：时间上限原来写死 25 分钟，双答与每题间隔叠加后 85 题的卷子会中途停住且不交卷，现在按题数放宽",

@@ -109,3 +109,41 @@ export const Database = [
 export const Shield = [
   ["path", { d: "M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6z" }],
 ];
+
+/* ---------- 导航图标：常态 / 强调态成对，子路径数量保持一致 ---------- */
+
+/** 四格：强调态每格往角上收紧，看起来像被点亮 */
+export const GridOn = [
+  ["path", { d: "M4 4h4.5v4.5H4zM15.5 4H20v4.5h-4.5zM4 15.5h4.5V20H4zM15.5 15.5H20V20h-4.5z" }],
+];
+
+/** 试卷：框不动，对勾变长 */
+export const ExamOn = [
+  ["path", { d: "M4 5h16v14H4z" }],
+  ["path", { d: "M6 12l4 4 8-9" }],
+];
+
+/** 题库：第一本被抽出一截 */
+export const LibraryOn = [
+  ["path", { d: "M5 8h5v11H5z" }],
+  ["path", { d: "M13 5h6v14h-6z" }],
+];
+
+/** 滑块：旋钮左右移动 */
+export const SlidersOn = [
+  ["path", { d: "M4 7h8M4 17h2" }],
+  ["path", { d: "M16 7h4M10 17h10" }],
+  ["path", { d: "M14 5v4M8 15v4" }],
+];
+
+export const Info = [
+  ["path", { d: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" }],
+  ["path", { d: "M12 11v5" }],
+  ["path", { d: "M12 8h.01" }],
+];
+
+export const InfoOn = [
+  ["path", { d: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" }],
+  ["path", { d: "M12 10v6" }],
+  ["path", { d: "M12 7.2h.01" }],
+];
