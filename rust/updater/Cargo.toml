@@ -1,0 +1,16 @@
+[package]
+name = "chaoxing-updater"
+version = "0.1.0"
+edition = "2021"
+description = "超星 AI 答题 的更新器：等主程序退出后把准备好的新版换上去并重启"
+
+[[bin]]
+name = "chaoxing-updater"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

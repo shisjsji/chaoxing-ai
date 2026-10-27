@@ -22,7 +22,7 @@ import requests
 
 from api.logger import logger
 
-APP_VERSION = "3.7.17"
+APP_VERSION = "3.8.0-beta.1"
 APP_NAME = "超星AI答题"
 
 CHECK_TIMEOUT = 8
@@ -39,6 +39,8 @@ LOCK_NAME = "update.lock"
 LOCK_MAX_AGE = 15 * 60
 # 解压好的新版本先放这里，等程序退出后由脚本做目录交换
 STAGE_DIR = "_update_tmp"
+# Rust 版更新器（随程序一起安装）。存在就用它，没有就回退到 PowerShell 脚本
+RUST_UPDATER = "chaoxing-updater.exe"
 
 LOG_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.log")
 PS1_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.ps1")
@@ -46,6 +48,12 @@ PS1_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.ps1")
 # 内置更新日志：断网时也能在界面里看到本版改了什么。
 # 新增版本时同步更新 CHANGELOG.md 与服务端 version.json 的 highlights。
 RELEASES = {
+    "3.8.0-beta.1": [
+        "【BETA】这一版换掉了安装/更新那层外壳（更新器改用 Rust 写），功能与 3.7.17 相同，但可能有不可控的 bug",
+        "【BETA】如果你在跑课或考试，建议先留在当前正式版，等这条 beta 标注消失再更新",
+        "更新器换成独立小程序：不再依赖 PowerShell 脚本，替换失败会明确回滚并写清原因",
+        "原 PowerShell 更新脚本保留为兜底：新更新器缺失时自动回退，不会更新失败",
+    ],
     "3.7.17": [
         "修复「立即重启」后程序关了却打不开：更新包改为程序还开着时解压，界面能看到百分比",
         "同一个包解压从 50 秒降到 7 秒（不再用 PowerShell 的 Expand-Archive）",
@@ -250,7 +258,8 @@ def check_update(endpoint: str, token: str = "") -> dict:
 
     return {
         "ok": True,
-        "has_update": _version_tuple(latest) > _version_tuple(APP_VERSION),
+        "has_update": _newer(latest, APP_VERSION),
+        "beta": bool(data.get("beta")) or _is_prerelease(latest),
         "version": latest,
         "current": APP_VERSION,
         "url": data.get("url", ""),
@@ -262,9 +271,22 @@ def check_update(endpoint: str, token: str = "") -> dict:
     }
 
 
+def _is_prerelease(text: str) -> bool:
+    return "-" in str(text)
+
+
+def _newer(latest: str, current: str) -> bool:
+    """latest 是否比 current 新。主版本号相同时，正式版算比 beta 新。"""
+    a, b = _version_tuple(latest), _version_tuple(current)
+    if a != b:
+        return a > b
+    return _is_prerelease(current) and not _is_prerelease(latest)
+
+
 def _version_tuple(text: str) -> tuple:
+    """只取主版本号做比较：3.8.0-beta.1 与 3.8.0 都算 (3,8,0)。"""
     parts = []
-    for piece in str(text).replace("-", ".").split("."):
+    for piece in str(text).split("-")[0].split("."):
         digits = "".join(ch for ch in piece if ch.isdigit())
         parts.append(int(digits) if digits else 0)
     return tuple(parts)
@@ -447,6 +469,35 @@ def download(url: str, sha256: str = "", progress=None) -> str:
     return target
 
 
+def write_lock() -> None:
+    """换文件期间留一个锁，挡住这段时间的重复启动。"""
+    try:
+        with open(os.path.join(base_dir(), LOCK_NAME), "w", encoding="utf-8") as fp:
+            fp.write(time.strftime("%Y-%m-%dT%H:%M:%S"))
+    except OSError:
+        pass
+
+
+def _spawn_rust_updater(app_dir: str, exe_name: str, stage_dir: str) -> bool:
+    """用 Rust 更新器接管替换。它不在就返回 False，调用方回退到脚本。"""
+    exe = os.path.join(app_dir, RUST_UPDATER)
+    if not os.path.exists(exe):
+        return False
+    try:
+        subprocess.Popen(
+            [exe, "--pid", str(os.getpid()), "--app", app_dir,
+             "--exe", exe_name, "--stage", stage_dir, "--log", LOG_PATH],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+            close_fds=True,
+        )
+        logger.info("已交给 Rust 更新器做替换")
+        return True
+    except Exception as exc:
+        logger.warning(f"Rust 更新器启动失败，回退到 PowerShell 脚本: {exc}")
+        return False
+
+
 def _ps_quote(text: str) -> str:
     """PowerShell 单引号字符串里的单引号要写成两个。"""
     return str(text).replace("'", "''")
@@ -593,6 +644,10 @@ def apply_and_restart(stage_dir: str) -> bool:
 
     app_dir = base_dir()
     exe_name = os.path.basename(sys.executable)
+
+    write_lock()
+    if _spawn_rust_updater(app_dir, exe_name, stage_dir):
+        return True
 
     script = _build_script("", app_dir, exe_name)
     # UTF-8 BOM 是关键：PowerShell 靠 BOM 识别中文路径，缺了会按 ANSI 解析成乱码

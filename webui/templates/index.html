@@ -376,6 +376,10 @@
   .upd-stage{margin:8px 0 0;font-size:12px;color:var(--c-ink2);line-height:1.6}
   .upd-stage.err{color:var(--c-danger)}
   dialog.update li{margin:2px 0}
+  dialog.update li.upd-beta{
+    margin:0 0 6px;padding:6px 9px;border-radius:6px;list-style:none;
+    background:#fdf8ec;border:1px solid #ecd9b0;color:#7a5b00;font-size:12px;line-height:1.6;
+  }
   dialog.update .foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px 16px}
   dialog.update textarea{
     width:100%;margin-top:10px;padding:8px 10px;border:1px solid var(--c-line);
@@ -1887,10 +1891,20 @@ async function syncUpdateState() {
 
 function showUpdateDialog(d) {
   pendingUpdate = d;
-  $('update-title').textContent = '发现新版本 ' + d.version;
+  const beta = !!d.beta;
+  $('update-title').textContent = '发现新版本 ' + d.version + (beta ? '（Beta）' : '');
   $('update-sub').textContent = '当前 ' + d.current + ' → ' + d.version
     + (d.notes ? '　' + d.notes : '');
-  fillList($('update-list'), (d.highlights && d.highlights.length) ? d.highlights : [d.notes || '细节修复与优化']);
+
+  const list = (d.highlights && d.highlights.length) ? d.highlights.slice() : [d.notes || '细节修复与优化'];
+  fillList($('update-list'), list);
+  if (beta) {
+    // Beta 必须在更新公告里说清楚，不能让人以为是正式版
+    const warn = document.createElement('li');
+    warn.className = 'upd-beta';
+    warn.textContent = '这是 Beta 版，可能有不可控的 bug。正在跑课或考试的话，建议先点「稍后」，等正式版。';
+    $('update-list').insertBefore(warn, $('update-list').firstChild);
+  }
   if ($('update-dialog').open) return;
   $('update-dialog').showModal();
   syncUpdateState();
