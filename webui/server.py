@@ -83,6 +83,12 @@ _state = {
         "face_ok": False,
         "driving": False,
     },
+    "agent": {
+        "running": False,
+        "error": "",
+        "result": None,
+        "finished_at": 0,
+    },
 }
 
 
@@ -91,7 +97,7 @@ def _write_config(cfg: dict, path: Path | None = None, with_secrets: bool = Fals
     template = _template_path()
     if template.exists():
         parser.read(template, encoding="utf-8")
-    for section in ("common", "tiku", "notification", "share"):
+    for section in ("common", "tiku", "notification", "share", "search", "agent"):
         if section not in parser:
             parser[section] = {}
     parser["common"].update(
@@ -132,6 +138,20 @@ def _write_config(cfg: dict, path: Path | None = None, with_secrets: bool = Fals
     )
     parser["notification"]["provider"] = ""
     parser["share"].update({"enabled": "true"})
+    parser["search"].update(
+        {
+            "enabled": "true" if cfg.get("search_enabled", True) else "false",
+            "url": str(cfg.get("search_url", "")).strip(),
+            "key": str(cfg.get("search_key", "")).strip() if with_secrets else "",
+        }
+    )
+    parser["agent"].update(
+        {
+            "url": str(cfg.get("agent_url", "")).strip(),
+            "model": str(cfg.get("agent_model", "")).strip(),
+            "key": str(cfg.get("agent_key", "")).strip() if with_secrets else "",
+        }
+    )
     target = path or CONFIG_PATH
     with open(target, "w", encoding="utf-8") as fp:
         parser.write(fp)
@@ -163,6 +183,8 @@ def _read_config() -> dict:
     parser.read(CONFIG_PATH, encoding="utf-8")
     common = parser["common"] if "common" in parser else {}
     tiku = parser["tiku"] if "tiku" in parser else {}
+    search = parser["search"] if "search" in parser else {}
+    agent = parser["agent"] if "agent" in parser else {}
     saved_key = _saved_secrets().get("api_key", "")
     return {
         "username": common.get("username", ""),
@@ -184,16 +206,36 @@ def _read_config() -> dict:
         "endpoint": tiku.get("endpoint", DEEPSEEK_ENDPOINT),
         "api_key_tail": saved_key[-4:] if len(saved_key) >= 4 else "",
         "has_key": bool(saved_key),
+        "search_url": search.get("url", ""),
+        "search_enabled": search.get("enabled", "true").lower() == "true",
+        "search_key_saved": bool(_saved_secrets().get("search_key")),
+        "agent_url": agent.get("url", ""),
+        "agent_model": agent.get("model", ""),
+        "agent_key_saved": bool(_saved_secrets().get("agent_key")),
         "share_enabled": True,
         "version": _app_version(),
     }
 
 
-def _save_secret(password: str, api_key: str) -> None:
+def _save_secret(password: str, api_key: str,
+                 search_key: str | None = None,
+                 agent_key: str | None = None) -> None:
+    old = {}
+    if SECRET_PATH.exists():
+        try:
+            old = json.loads(SECRET_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            old = {}
     payload = {
         "password": secret.protect(password) if password else "",
         "api_key": secret.protect(api_key) if api_key else "",
     }
+    # 传 None 表示「这次没改这个 Key」，保留原值；传空串才是真的要清掉
+    for name, value in (("search_key", search_key), ("agent_key", agent_key)):
+        if value is None:
+            payload[name] = old.get(name, "")
+        else:
+            payload[name] = secret.protect(value) if value else ""
     SECRET_PATH.write_text(json.dumps(payload), encoding="utf-8")
 
 
@@ -207,6 +249,8 @@ def _saved_secrets() -> dict:
         return {
             "password": secret.unprotect(data.get("password", "")),
             "api_key": secret.unprotect(data.get("api_key", "")),
+            "search_key": secret.unprotect(data.get("search_key", "")),
+            "agent_key": secret.unprotect(data.get("agent_key", "")),
         }
 
     if CONFIG_PATH.exists():
@@ -218,7 +262,8 @@ def _saved_secrets() -> dict:
         key = tiku.get("key", "") or ""
         if pwd or key:
             _save_secret(pwd, key)
-            return {"password": pwd, "api_key": key}
+            return {"password": pwd, "api_key": key,
+                    "search_key": "", "agent_key": ""}
     return {}
 
 
@@ -229,6 +274,10 @@ def _fill_secrets(cfg: dict) -> dict:
         cfg["password"] = saved.get("password", "")
     if not str(cfg.get("api_key", "")).strip():
         cfg["api_key"] = saved.get("api_key", "")
+    if not str(cfg.get("search_key", "")).strip():
+        cfg["search_key"] = saved.get("search_key", "")
+    if not str(cfg.get("agent_key", "")).strip():
+        cfg["agent_key"] = saved.get("agent_key", "")
     return cfg
 
 
@@ -267,6 +316,9 @@ def quit_for_update() -> None:
         try:
             win = _exam_browser.get("window")
             if win is not None:
+                from api import exam_embed
+
+                exam_embed.detach()
                 win.destroy()
         except Exception:
             pass
@@ -326,18 +378,71 @@ def api_exam_browser_open():
         _exam_browser.update(url="", enc="", answer_id="", exam_id="")
     try:
         win.load_url(url or "https://mooc1.chaoxing.com/")
-        win.show()
     except Exception as exc:
         return jsonify(ok=False, error=f"打不开浏览器窗口：{exc}"), 500
-    return jsonify(ok=True, message="已打开考试窗口，请在里面进入考场")
+    # 嵌进页面里时不主动 show：那个窗口现在是主窗口的子窗口，
+    # 先显示会以 0,0 贴在左上角盖住标题栏，等前端把区域坐标报上来再摆。
+    try:
+        from api import exam_embed
+
+        placed = exam_embed.set_active(True)
+    except Exception:
+        placed = False
+    if not placed:
+        try:
+            win.show()
+        except Exception:
+            pass
+    return jsonify(ok=True, embedded=placed,
+                   message="已打开考试窗口，请在里面进入考场")
+
+
+@app.post("/api/exam/rect")
+def api_exam_rect():
+    """前端上报考场区域在页面里的位置（CSS 像素），用于摆放嵌入的窗口。"""
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        from api import exam_embed
+
+        exam_embed.set_rect(data.get("box"))
+    except Exception:
+        return jsonify(ok=False), 200
+    return jsonify(ok=True)
+
+
+@app.post("/api/exam/browser/close")
+def api_exam_browser_close():
+    """收起下方的考场页面。嵌进去的窗口没有标题栏，得给个出口。"""
+    win = _exam_browser.get("window")
+    try:
+        from api import exam_embed
+
+        exam_embed.set_active(False)
+    except Exception:
+        pass
+    if win is not None:
+        try:
+            win.load_url("about:blank")
+        except Exception:
+            pass
+    with _lock:
+        _exam_browser.update(url="", enc="", answer_id="", exam_id="")
+    return jsonify(ok=True)
 
 
 @app.get("/api/exam/browser")
 def api_exam_browser_state():
     with _lock:
-        return jsonify(ok=True, url=_exam_browser["url"], enc=_exam_browser["enc"],
-                       answer_id=_exam_browser["answer_id"],
-                       exam_id=_exam_browser["exam_id"])
+        state = dict(url=_exam_browser["url"], enc=_exam_browser["enc"],
+                     answer_id=_exam_browser["answer_id"],
+                     exam_id=_exam_browser["exam_id"])
+    try:
+        from api import exam_embed
+
+        state["active"] = bool(exam_embed.embedded()) and exam_embed.is_active()
+    except Exception:
+        state["active"] = False
+    return jsonify(ok=True, **state)
 
 
 @app.post("/api/exam/autodrive")
@@ -353,11 +458,13 @@ def api_exam_autodrive():
             return jsonify(ok=False, error="刷课任务正在运行，请先停止再开始考试"), 409
         _state["exam"].update(driving=True, status="running", answered=0, error="")
 
-    threading.Thread(target=_drive_exam, args=(win,), daemon=True).start()
+    data = request.get_json(force=True, silent=True) or {}
+    course = str(data.get("course") or "").strip()
+    threading.Thread(target=_drive_exam, args=(win, course), daemon=True).start()
     return jsonify(ok=True, message="已开始自动作答")
 
 
-def _drive_exam(win) -> None:
+def _drive_exam(win, course: str = "") -> None:
     from api.browser_exam import run_pass
 
     def log(msg: str) -> None:
@@ -366,7 +473,7 @@ def _drive_exam(win) -> None:
     try:
         started = time.time()
         log("开始在考试窗口里自动作答")
-        stats = run_pass(win, log)
+        stats = run_pass(win, log, course=course)
         elapsed = int(time.time() - started)
         with _lock:
             _state["exam"].update(answered=stats.get("ok", 0),
@@ -552,10 +659,38 @@ def api_save_config():
     err = _validate(cfg)
     if err:
         return jsonify(ok=False, error=err), 400
-    _save_secret(cfg.get("password", ""), cfg.get("api_key", ""))
+    _save_secret(cfg.get("password", ""), cfg.get("api_key", ""),
+                 cfg.get("search_key"), cfg.get("agent_key"))
     _write_config(cfg)
     note = "密码与 Key 已加密保存在本机" if secret.available() else "（当前系统不支持加密，密码以原文保存）"
     return jsonify(ok=True, message="配置已保存，" + note)
+
+
+@app.post("/api/test-search")
+def api_test_search():
+    """试一次联网搜索，验地址和 Key 通不通。"""
+    data = request.get_json(force=True, silent=True) or {}
+    query = str(data.get("query") or "人工智能发展史").strip()
+    conf = {
+        "enabled": True,
+        "url": str(data.get("search_url") or "").strip(),
+        "key": str(data.get("search_key") or "").strip(),
+    }
+    if not conf["key"]:
+        conf["key"] = _saved_secrets().get("search_key", "")
+    if not (conf["url"] and conf["key"]):
+        return jsonify(ok=False, error="请先填写搜索地址和 Key"), 400
+    try:
+        from api import websearch
+
+        results = websearch.search(query, 3, conf=conf)
+    except Exception as exc:
+        return jsonify(ok=False, error=f"{type(exc).__name__}: {exc}"), 500
+    if not results:
+        return jsonify(ok=False,
+                       error="没搜到结果。检查地址是否要填完整路径、Key 是否正确"), 400
+    return jsonify(ok=True, results=results,
+                   message=f"搜索正常，返回 {len(results)} 条")
 
 
 @app.post("/api/test-llm")
@@ -951,7 +1086,8 @@ def api_start():
     err = _validate(cfg)
     if err:
         return jsonify(ok=False, error=err), 400
-    _save_secret(cfg.get("password", ""), cfg.get("api_key", ""))
+    _save_secret(cfg.get("password", ""), cfg.get("api_key", ""),
+                 cfg.get("search_key"), cfg.get("agent_key"))
     _write_config(cfg)
     _write_config(cfg, path=RUNTIME_CONFIG, with_secrets=True)
 
@@ -1154,3 +1290,164 @@ def api_status():
             running=_state["proc"] is not None,
             log_count=_state["seq"],
         )
+# ---------- 助教：题库体检 ----------
+
+def _agent_log(msg: str) -> None:
+    _append_log(msg)
+
+
+@app.get("/api/agent/config")
+def api_agent_config():
+    """助教状态：模型配好了没、题库审到什么程度。"""
+    from api import agent as agent_mod
+    from api.library import Library
+
+    c = agent_mod.conf()
+    try:
+        stats = Library().audit_stats()
+    except Exception as exc:
+        return jsonify(ok=False, error=f"打不开题库：{exc}"), 500
+    with _lock:
+        running = bool(_state["agent"]["running"])
+    return jsonify(ok=True, ready=c["ready"], own=c["own"],
+                   endpoint=c["endpoint"], model=c["model"],
+                   has_key=bool(c["key"]), running=running,
+                   stats=stats)
+
+
+@app.post("/api/agent/audit")
+def api_agent_audit():
+    """跑一轮题库审查。"""
+    data = request.get_json(force=True, silent=True) or {}
+    max_items = max(1, min(500, int(_num(data.get("max_items"), 80, int))))
+    use_model = bool(data.get("use_model", True))
+    only_new = bool(data.get("only_unaudited", False))
+    use_search = bool(data.get("use_search", True))
+    with _lock:
+        if _state["agent"]["running"]:
+            return jsonify(ok=False, error="上一轮审查还没跑完"), 409
+        _state["agent"].update(running=True, error="", result=None)
+    threading.Thread(target=_run_agent_audit,
+                     args=(max_items, use_model, only_new, use_search),
+                     daemon=True).start()
+    return jsonify(ok=True, message="开始体检")
+
+
+def _run_agent_audit(max_items: int, use_model: bool, only_new: bool,
+                     use_search: bool = True) -> None:
+    from api import agent as agent_mod
+
+    try:
+        result = agent_mod.audit(max_items=max_items, use_model=use_model,
+                                 log=_agent_log, only_unaudited=only_new,
+                                 use_search=use_search)
+        with _lock:
+            _state["agent"].update(result=result, running=False,
+                                   finished_at=time.time())
+    except Exception as exc:
+        _agent_log(f"体检中断：{type(exc).__name__}: {exc}")
+        with _lock:
+            _state["agent"].update(error=f"{type(exc).__name__}: {exc}",
+                                   running=False, finished_at=time.time())
+        try:
+            from api.feedback import push_error
+
+            push_error("agent.audit", exc, "")
+        except Exception:
+            pass
+
+
+@app.get("/api/agent/result")
+def api_agent_result():
+    state = request.args.get("state", "").strip()
+    try:
+        limit = max(1, min(500, int(request.args.get("limit", 200))))
+    except ValueError:
+        limit = 200
+    from api.library import Library
+
+    lib = Library()
+    try:
+        rows = lib.audit_list(state, limit=limit)
+    except Exception as exc:
+        return jsonify(ok=False, error=str(exc)), 500
+    with _lock:
+        running = bool(_state["agent"]["running"])
+        error = _state["agent"]["error"]
+        last = _state["agent"]["result"]
+    return jsonify(ok=True, items=rows, stats=lib.audit_stats(),
+                   running=running, error=error,
+                   last_total=(last or {}).get("total"))
+
+
+@app.post("/api/agent/apply")
+def api_agent_apply():
+    """把一条审查结论落到题库上：确认 / 判错 / 改成新答案。"""
+    data = request.get_json(force=True, silent=True) or {}
+    fp = str(data.get("fingerprint") or "").strip()
+    action = str(data.get("action") or "").strip()
+    if not fp:
+        return jsonify(ok=False, error="缺少题目指纹"), 400
+    from api.library import Library
+
+    lib = Library()
+    try:
+        if action == "confirm":
+            lib.confirm(fp, "manual")
+            note = "已标记为确认"
+        elif action == "reject":
+            lib.reject(fp)
+            note = "已标记为错误"
+        elif action == "set":
+            answer = str(data.get("answer") or "").strip()
+            if not answer:
+                return jsonify(ok=False, error="新答案不能为空"), 400
+            lib.set_answer(fp, answer, "manual")
+            note = "答案已更新"
+        elif action == "clear":
+            lib.set_audit([(fp, "", "")])
+            note = "已清除审查结论"
+        else:
+            return jsonify(ok=False, error="未知操作"), 400
+    except Exception as exc:
+        return jsonify(ok=False, error=f"{type(exc).__name__}: {exc}"), 500
+    return jsonify(ok=True, message=note)
+
+
+@app.post("/api/agent/upload")
+def api_agent_upload():
+    """把审查通过、而且原本就有硬证据的题上报共享题库。"""
+    from api import agent as agent_mod
+    from api.library import Library
+
+    try:
+        rows = agent_mod.upload_candidates()
+    except Exception as exc:
+        return jsonify(ok=False, error=f"筛选失败：{exc}"), 500
+    if not rows:
+        return jsonify(ok=False,
+                       error="还没有可上报的题。需要「审查通过」且原始依据是"
+                             "平台判分 / 整卷全对 / 共享库 / 手工确认"), 400
+    items = [{"fingerprint": r.get("fingerprint", ""),
+              "title": r.get("title", ""),
+              "options": r.get("options", ""),
+              "qtype": r.get("qtype", ""),
+              "answer": r.get("answer", "")} for r in rows]
+    username = ""
+    try:
+        parser = ConfigParser(interpolation=None)
+        parser.read(CONFIG_PATH, encoding="utf-8")
+        username = parser["common"].get("username", "") if "common" in parser else ""
+    except Exception:
+        username = ""
+    from api.remote_library import submit_items
+
+    try:
+        accepted = submit_items(items, username, "high")
+    except Exception as exc:
+        return jsonify(ok=False, error=f"上报失败：{exc}"), 500
+    if not accepted:
+        return jsonify(ok=False, error="服务器没有接受任何题目，稍后再试"), 400
+    _agent_log(f"助教已上报 {accepted} 道审查通过的题到共享题库")
+    return jsonify(ok=True, accepted=accepted,
+                   message=f"已上报 {accepted} 道题")

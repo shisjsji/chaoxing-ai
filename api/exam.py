@@ -714,15 +714,31 @@ def _ai_conf() -> dict:
 
 
 _PROMPTS = {
-    "single": "本题为单选题，只能选一个选项，输出选项内容（不要输出字母）",
-    "multiple": "本题为多选题，选出所有正确选项，可能一个也可能多个，不要多选没把握的",
+    "single": "本题为单选题，只有一个选项完全符合题意",
+    "multiple": "本题为多选题，选出所有符合题意的选项",
     "judgement": "本题为判断题，只回答“正确”或“错误”",
     "completion": "本题为填空题，直接给出应填入的内容",
-    "shortanswer": "本题为简答题，简明扼要地作答",
+    "shortanswer": "本题为简答题，紧扣题目要求作答",
     "term": "本题为名词解释，用一到三句话给出准确简洁的定义",
     "essay": "本题为论述题，先给核心观点再分条展开，条理清晰",
     "calculation": "本题为计算题，先写公式再逐步代入计算，最后给出结果",
 }
+
+# 当前在考哪门课。考试流程是单线程的，用一个模块变量带下去比
+# 顺着五层调用一路传参省事得多。
+_COURSE_NAME = ""
+
+
+def set_course_name(name: str) -> None:
+    global _COURSE_NAME
+    _COURSE_NAME = str(name or "").strip()
+
+
+def _role_prefix() -> str:
+    if _COURSE_NAME:
+        return (f"你是「{_COURSE_NAME}」这门课的资深命题教师，"
+                "熟悉这门课的教材表述和常见考点。")
+    return "你是这门课的资深命题教师，熟悉教材表述和常见考点。"
 
 
 # 客观题才值得双答比对；主观题两次措辞必然不同，比了也没意义
@@ -732,6 +748,10 @@ _SECOND_PASS = (
     "这是独立复核：请完全重新判读题目，不要假定任何既有答案。"
     "先在内部逐项比对选项、排除干扰项，再给出最终结果。"
 )
+
+# 逐项分析。多选特别强调不能漏，因为学习通多选少选错选都是 0 分。
+_ANALYZE = ("答题前先在内部逐个分析每个选项：它符合教材表述还是背离，错在哪一步。"
+            "结论里不要写分析过程。")
 
 
 def _same_answer(question: "ExamQuestion", a: str, b: str) -> bool:
@@ -762,10 +782,16 @@ def ask_ai(question: ExamQuestion, variant: int = 0) -> Optional[str]:
     prompt = _PROMPTS.get(question.qtype, _PROMPTS["shortanswer"])
     if variant:
         prompt = _SECOND_PASS + prompt
+    if question.qtype in OBJECTIVE_TYPES:
+        prompt = prompt + "。" + _ANALYZE
+        if question.qtype == "multiple":
+            prompt += ("凡是有教材依据、成立的要全部选出，不要因为「没把握」就漏掉——"
+                       "多选题少选和错选同样不得分。但也不要把明显背离题意的选项凑数。")
     user_text = f"题目：{question.title}"
     if question.options:
         user_text += f"\n选项：\n{question.options_text}"
-    system_text = (prompt + "。以 json 格式输出，示例：{\"Answer\": [\"答案内容\"]}。"
+    system_text = (_role_prefix() + prompt + "。"
+                   "以 json 格式输出，示例：{\"Answer\": [\"答案内容\"]}。"
                    "除此之外不要输出任何多余内容，也不要使用 MD 语法。")
 
     kwargs = {
@@ -1007,6 +1033,7 @@ def run_exam(session: requests.Session, course: dict, exam_id, enc_task,
     enc/answer_id 有值时直接用它进入答题（enc 由内嵌浏览器抓取，验证码已由浏览器过掉）。
     """
     sess = ExamSession(session, course, exam_id, enc_task)
+    set_course_name((course or {}).get("title", ""))
 
     if enc:
         # 浏览器已经把验证码和签名都过掉了，这里直接用它的会话参数答题

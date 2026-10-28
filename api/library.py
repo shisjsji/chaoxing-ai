@@ -47,6 +47,11 @@ _MIGRATIONS = (
     ("answer_key", "ALTER TABLE questions ADD COLUMN answer_key TEXT DEFAULT ''"),
     ("evidence", "ALTER TABLE questions ADD COLUMN evidence TEXT DEFAULT ''"),
     ("disputes", "ALTER TABLE questions ADD COLUMN disputes INTEGER DEFAULT 0"),
+    # 助教审查结论。ok=确认无误 / suspect=有疑问 / broken=数据本身有问题 /
+    # dup=和其它题重复，空字符串表示还没查过。
+    ("audit_state", "ALTER TABLE questions ADD COLUMN audit_state TEXT DEFAULT ''"),
+    ("audit_note", "ALTER TABLE questions ADD COLUMN audit_note TEXT DEFAULT ''"),
+    ("audited_at", "ALTER TABLE questions ADD COLUMN audited_at REAL DEFAULT 0"),
 )
 
 _OPTION_PREFIX = re.compile(r"^[A-Za-z]\s*[.、:：)?）]?\s*")
@@ -387,6 +392,87 @@ class Library:
                 }
             finally:
                 conn.close()
+
+    def rows_for_audit(self, limit: int = 0) -> list:
+        """取全部题目给助教检查。limit=0 表示不限。"""
+        sql = ("SELECT fingerprint,title,options,qtype,answer,status,evidence,"
+               "disputes,source FROM questions")
+        params: list = []
+        if limit:
+            sql += " LIMIT ?"
+            params.append(int(limit))
+        with _lock:
+            conn = sqlite3.connect(self.path)
+            try:
+                rows = conn.execute(sql, params).fetchall()
+            finally:
+                conn.close()
+        keys = ("fingerprint", "title", "options", "qtype", "answer", "status",
+                "evidence", "disputes", "source")
+        out = []
+        for r in rows:
+            item = dict(zip(keys, r))
+            item["evidence"] = item["evidence"] or ""
+            item["disputes"] = item["disputes"] or 0
+            out.append(item)
+        return out
+
+    def set_audit(self, items: list) -> int:
+        """批量写审查结论。items 是 [(fingerprint, state, note)]。"""
+        if not items:
+            return 0
+        now = time.time()
+        with _lock:
+            conn = sqlite3.connect(self.path)
+            try:
+                conn.executemany(
+                    "UPDATE questions SET audit_state=?, audit_note=?, audited_at=?"
+                    " WHERE fingerprint=?",
+                    [(st, (note or "")[:500], now, fp) for fp, st, note in items],
+                )
+                conn.commit()
+                return len(items)
+            finally:
+                conn.close()
+
+    def audit_stats(self) -> dict:
+        with _lock:
+            conn = sqlite3.connect(self.path)
+            try:
+                rows = conn.execute(
+                    "SELECT audit_state, COUNT(*) FROM questions GROUP BY audit_state"
+                ).fetchall()
+            finally:
+                conn.close()
+        by = {(s or ""): c for s, c in rows}
+        return {
+            "total": sum(by.values()),
+            "audited": sum(c for s, c in by.items() if s),
+            "ok": by.get("ok", 0),
+            "suspect": by.get("suspect", 0),
+            "broken": by.get("broken", 0),
+            "dup": by.get("dup", 0),
+            "none": by.get("", 0),
+        }
+
+    def audit_list(self, state: str = "", limit: int = 200) -> list:
+        sql = ("SELECT fingerprint,title,options,qtype,answer,status,evidence,"
+               "audit_state,audit_note FROM questions")
+        params: list = []
+        if state:
+            sql += " WHERE audit_state=?"
+            params.append(state)
+        sql += " ORDER BY audited_at DESC LIMIT ?"
+        params.append(int(limit))
+        with _lock:
+            conn = sqlite3.connect(self.path)
+            try:
+                rows = conn.execute(sql, params).fetchall()
+            finally:
+                conn.close()
+        keys = ("fingerprint", "title", "options", "qtype", "answer", "status",
+                "evidence", "audit_state", "audit_note")
+        return [dict(zip(keys, r)) for r in rows]
 
     def search(self, keyword: str = "", limit: int = 200) -> list:
         sql = ("SELECT fingerprint,title,qtype,answer,status,hits,updated_at,evidence,"

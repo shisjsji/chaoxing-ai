@@ -14,8 +14,9 @@ window.MORPH_ICONS = icons;
 window.morphIcon = function (icon, opts) {
   const o = opts || {};
   const el = document.createElement("morph-icon");
-  el.setAttribute("size", String(o.size || 16));
-  el.setAttribute("stroke-width", String(o.strokeWidth || 1.9));
+  el.setAttribute("size", String(o.size || 18));
+  el.setAttribute("stroke-width", String(o.strokeWidth || 1.75));
+  el.setAttribute("shape-rendering", "geometricPrecision");
   el.setAttribute("spring", "snappy");
   el.setAttribute("reduced-motion", "user");
   if (o.color) el.setAttribute("color", o.color);

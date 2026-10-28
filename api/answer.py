@@ -161,6 +161,12 @@ class Tiku(ABC):
         self._config_path = config_path or self.CONFIG_PATH
         self.true_list = []
         self.false_list = []
+        # 当前正在处理哪门课。刷课/考试流程在开答之前会把它设进来，
+        # 提示词里带上课程名，专业课的表述精度会明显好一些。
+        self.course_name = ""
+
+    def set_course_name(self, name: str) -> None:
+        self.course_name = str(name or "").strip()
 
     @property
     def name(self):
@@ -1326,21 +1332,54 @@ class AI(Tiku):
         model_name = self.vision_model if image_parts else self.model
 
         # ---------- 组提示词：同一道题问两遍，第二遍换一套说法独立再判 ----------
+        # 课程名带进提示词：军事理论、思政这类课，有没有学科上下文差别很大。
+        def _role(kind: str) -> str:
+            if self.course_name:
+                return (f"你是「{self.course_name}」这门课的资深命题教师，"
+                        "熟悉这门课的教材表述和常见考点。")
+            return "你是这门课的资深命题教师，熟悉教材表述和常见考点。"
+
+        _OUT = ("以json格式输出，示例回答：{\"Answer\": [\"答案\"]}。"
+                "除此之外不要输出任何多余的内容，也不要使用MD语法。"
+                "如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料")
+
+        _ANALYZE = ("答题前先在内部逐个分析每个选项：它符合教材表述还是背离，"
+                    "错在哪一步。想清楚再给结论，结论里不要写分析过程。")
+
         def _compose(variant: int):
             prefix = ("这次是独立复核：请完全重新判读题目，不要假定任何既有答案。"
                       "先在内部逐项比对，再给出最终结论。") if variant else ""
             kind = q_info['type']
             if kind == "single":
-                system = "本题为单选题，你只能选择一个选项，请根据题目和选项回答问题，以json格式输出正确的选项内容，示例回答：{\"Answer\": [\"答案\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料"
+                system = (_role(kind) +
+                          "本题为单选题，只有一个选项完全符合题意。" + _ANALYZE +
+                          "注意区分「表述正确但不切题」的干扰项，"
+                          "也要警惕把正确选项写得更长更具体的套路项。" +
+                          _OUT)
                 user = f"题目：{title_text}\n选项：{options}"
             elif kind == 'multiple':
-                system = "本题为多选题，请选出所有正确的选项，可能只有一个也可能有多个，不要多选没有把握的选项。以json格式输出正确的选项内容，不要输出选项前的字母，示例回答：{\"Answer\": [\"答案1\", \"答案2\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料"
+                # 多选少选错选都是 0 分，所以这里绝不能鼓励模型保守。
+                system = (_role(kind) +
+                          "本题为多选题，正确选项可能有一个也可能有多个。" +
+                          _ANALYZE +
+                          "逐个选项独立判断，凡是有教材依据、成立的要全部选出，"
+                          "不要因为「没把握」就漏掉有依据的选项——"
+                          "多选题少选和错选同样不得分。"
+                          "但也不要把明显背离题意的选项凑数。" +
+                          _OUT.replace('[\"答案\"]', '[\"答案1\", \"答案2\"]'))
                 user = f"题目：{title_text}\n选项：{options}"
             elif kind == 'completion':
-                system = "本题为填空题，你必须根据语境和相关知识填入合适的内容，请根据题目回答问题，以json格式输出正确的答案，示例回答：{\"Answer\": [\"答案\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料"
+                system = (_role(kind) +
+                          "本题为填空题，请填入最贴合语境的表述，"
+                          "注意专业术语的准确写法、语序和单位，不要写成一句话解释。" + _OUT)
                 user = f"题目：{title_text}"
             elif kind == 'judgement':
-                system = "本题为判断题，你只能回答正确或者错误，请根据题目回答问题，以json格式输出正确的答案，示例回答：{\"Answer\": [\"正确\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料"
+                system = (_role(kind) +
+                          "本题为判断题，只能回答「正确」或「错误」。" +
+                          _ANALYZE +
+                          "判断时留意绝对化措辞（一定、必须、所有、完全、唯一）"
+                          "往往是错误命题的特征，但不要机械套用，仍以学科事实为准。" +
+                          _OUT.replace('[\"答案\"]', '[\"正确\"]'))
                 user = f"题目：{title_text}"
             elif kind in ('term', 'essay', 'calculation'):
                 exam_prompts = {
@@ -1348,10 +1387,12 @@ class AI(Tiku):
                     'essay': "本题为论述题，请先给出核心观点，再分条展开论证，条理清晰、篇幅适中，不要写成散文",
                     'calculation': "本题为计算题，请先写出所用公式，再逐步代入数值计算，最后明确给出结果（含单位）",
                 }
-                system = exam_prompts[kind] + "。以json格式输出正确的答案，示例回答：{\"Answer\": [\"答案内容\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料"
+                system = _role(kind) + exam_prompts[kind] + "。" + _OUT
                 user = f"题目：{title_text}"
             else:
-                system = "本题为简答题，你必须根据语境和相关知识填入合适的内容，请根据题目回答问题，以json格式输出正确的答案，示例回答：{\"Answer\": [\"这是我的答案\"]}。除此之外不要输出任何多余的内容，也不要使用MD语法。如果你使用了互联网搜索，也请不要返回搜索的结果和参考资料"
+                system = (_role(kind) +
+                          "本题为简答题，紧扣题目要求作答，先给结论再补必要说明，"
+                          "不要展开成一篇短文。" + _OUT)
                 user = f"题目：{title_text}"
             return prefix + system, user
 

@@ -158,6 +158,11 @@ class CxCaptcha:
             if not cap_img:
                 return False
             cap_token = self.recognition(cap_img)
+            # 识别结果要留痕：只报「验证码验证失败」没法判断是识别错了还是类型变了
+            if cap_token:
+                logger.debug(f"验证码识别结果: {cap_token!r}")
+            else:
+                logger.warning("验证码识别为空（ddddocr 没给出结果）")
             return self.submitCaptcha(cap_token)
         except Exception as e:
             logger.error(f"验证码自动验证时发生异常: {e}")

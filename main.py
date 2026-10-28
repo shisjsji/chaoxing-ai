@@ -8,6 +8,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from typing import Any
+from requests import RequestException
 from tqdm import tqdm
 from api.answer import Tiku
 from api.base import Chaoxing, Account, StudyResult
@@ -26,6 +27,10 @@ except ImportError:
 
     class ShutDown(Exception):
         pass
+
+
+class NetworkDownError(Exception):
+    """连续多次网络异常，判断为断网。"""
 
 
 class ChapterResult(enum.Enum):
@@ -361,6 +366,10 @@ class JobProcessor:
         self.worker_num = config["jobs"]
         self.config = config
         self.retry_interval = config.get("retry_interval", 1.0)
+        # 连续网络异常计数：断网时 worker 不能直接死，否则 task_queue.join()
+        # 永远等不到 task_done，整个进程就卡在「运行中」不动了
+        self.network_fails = 0
+        self.stopped = False
 
     def run(self):
         for task in self.tasks:
@@ -373,10 +382,17 @@ class JobProcessor:
 
         threading.Thread(target=self.retry_thread, daemon=True).start()
 
-        self.task_queue.join()
+        # 不用 task_queue.join()：万一有 worker 提前退出，join 会永远等下去
+        while not self.stopped and self.task_queue.unfinished_tasks:
+            time.sleep(0.2)
         time.sleep(0.5)
         if hasattr(self.task_queue, "shutdown"):
-            self.task_queue.shutdown()
+            try:
+                self.task_queue.shutdown()
+            except Exception:
+                pass
+        if self.stopped:
+            raise NetworkDownError("连续多次网络异常，判断为网络断开，任务已停止")
 
     @log_error
     def worker_thread(self):
@@ -387,7 +403,26 @@ class JobProcessor:
                 logger.info("Queue shut down")
                 return
 
-            task.result = process_chapter(self.chaoxing, task.course, task.point, self.speed)
+            if self.stopped:
+                self.task_queue.task_done()
+                return
+
+            try:
+                task.result = process_chapter(self.chaoxing, task.course, task.point, self.speed)
+                self.network_fails = 0
+            except RequestException as exc:
+                self.network_fails += 1
+                logger.error("网络异常（连续 {} 次）：{}", self.network_fails, exc)
+                if self.network_fails >= 8:
+                    logger.error("连续多次网络异常，判断为网络断开，正在停止任务")
+                    self.stopped = True
+                    self.task_queue.task_done()
+                    return
+                task.result = ChapterResult.ERROR
+            except Exception as exc:
+                # 单个章节出问题不该让 worker 退出，否则队列同样会卡住
+                logger.error("章节处理异常，已跳过：{}: {}", type(exc).__name__, exc)
+                task.result = ChapterResult.ERROR
 
             match task.result:
                 case ChapterResult.SUCCESS:

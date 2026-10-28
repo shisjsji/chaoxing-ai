@@ -43,6 +43,32 @@ def already_running() -> bool:
         return False
 
 
+def focus_existing() -> bool:
+    """把已经开着的窗口提到前台。找不到（比如是个没窗口的僵尸进程）返回 False。"""
+    found = []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    def enum_cb(hwnd, _):
+        length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+        if length:
+            buf = ctypes.create_unicode_buffer(length + 1)
+            ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+            if buf.value.strip() == "超星 AI 答题" and ctypes.windll.user32.IsWindowVisible(hwnd):
+                found.append(hwnd)
+        return True
+
+    try:
+        ctypes.windll.user32.EnumWindows(enum_cb, 0)
+        if not found:
+            return False
+        hwnd = found[0]
+        ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+        ctypes.windll.user32.SetForegroundWindow(hwnd)
+        return True
+    except Exception:
+        return False
+
+
 def notify(text: str, title: str = "超星 AI 答题") -> None:
     """窗口还没建起来时只能走系统消息框。"""
     try:
@@ -130,17 +156,38 @@ def launch_window() -> None:
 
     # 考试专用窗口：进考场要过图形验证码和客户端签名，交给真浏览器最稳，
     # 程序只从它的地址栏里取 enc 然后自动答题。
+    # 无边框是为了嵌进界面的「考试」页 —— 有标题栏就露馅了。
     exam = webview.create_window(
         "考试（在此进入考场）",
         "about:blank",
         width=1080,
         height=820,
         hidden=True,
+        frameless=True,
         text_select=True,
     )
     from webui.server import set_exam_window
 
     set_exam_window(exam)
+
+    def _embed_exam() -> None:
+        """等两个窗口的原生句柄都就绪，再把考场窗口挂进主窗口。"""
+        from api import exam_embed
+
+        for _ in range(80):
+            time.sleep(0.3)
+            try:
+                if exam_embed.attach(window, exam):
+                    return
+            except Exception:
+                pass
+        # 挂不进去就还原成普通窗口，否则无边框又关不掉
+        try:
+            exam_embed.make_standalone(exam)
+        except Exception:
+            pass
+
+    threading.Thread(target=_embed_exam, daemon=True).start()
 
     # 先显示启动提示，等本地服务真的能响应再加载界面，
     # 避免 WebView2 冷启动时长时间黑屏
@@ -171,9 +218,26 @@ def launch_window() -> None:
         except Exception:
             pass
         try:
+            from api import exam_embed
+
+            exam_embed.detach()
+        except Exception:
+            pass
+        try:
+            exam.destroy()
+        except Exception:
+            pass
+        try:
             window.destroy()
         except Exception:
             pass
+        # 兜底：窗口关不掉时进程会残留，托盘已经没了却还占着单实例锁，
+        # 下次启动就变成「提示已经在运行但找不到窗口」。3 秒后自己收尾。
+        def _force_exit() -> None:
+            time.sleep(3.0)
+            os._exit(0)
+
+        threading.Thread(target=_force_exit, daemon=True).start()
 
     def on_closing():
         # 关窗口只是收进托盘，程序继续在后台跑
@@ -255,11 +319,14 @@ def main() -> None:
         try:
             from api.logger import logger
 
-            logger.info("检测到已有一个实例在运行，本次启动退出")
+            logger.info("检测到已有一个实例在运行")
         except Exception:
             pass
-        notify("程序已经在运行了。\n\n"
-               "如果没看到窗口，双击右下角托盘里的图标就能打开。")
+        # 能提到前台就直接提，省得用户看到一句"已经在运行"却找不到窗口
+        if focus_existing():
+            return
+        notify("程序已经在运行，但没有找到它的窗口。\n\n"
+               "可能是上一次退出没退干净，请在任务管理器里结束「超星AI答题」再重新打开。")
         return
 
     # 上次更新失败的说明读一次就删，弹窗比顶部提示条更不会漏看

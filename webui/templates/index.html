@@ -4,453 +4,48 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>超星 AI 答题</title>
-<style>
-  /* ---------- 设计令牌 ---------- */
-  :root{
-    --c-bg:#f6f7f9;
-    --c-surface:#ffffff;
-    --c-ink:#1f2328;
-    --c-ink2:#57606a;
-    --c-ink3:#8c959f;
-    --c-line:#d8dee4;
-    --c-line-soft:#eaeef2;
-    --c-primary:#2563eb;
-    --c-primary-hover:#1d4ed8;
-    --c-primary-soft:#eef3fd;
-    --c-success:#1a7f37;
-    --c-warn:#9a6700;
-    --c-danger:#cf222e;
-    --r:6px;
-    --r-sm:4px;
-    --shadow:0 1px 2px rgba(31,35,40,.06);
-    --dur:160ms;
-    --ease:cubic-bezier(.22,.61,.36,1);
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    margin:0;background:var(--c-bg);color:var(--c-ink);
-    font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-    -webkit-font-smoothing:antialiased;
-  }
-  button,input,select,textarea{font:inherit;color:inherit}
-  :focus-visible{outline:2px solid var(--c-primary);outline-offset:1px}
-
-  /* ---------- 三栏布局 ---------- */
-  .app{
-    display:grid;height:100vh;overflow:hidden;
-    grid-template-columns:200px minmax(0,1fr) 320px;
-    transition:grid-template-columns var(--dur) ease;
-  }
-  .app.nologs{grid-template-columns:200px minmax(0,1fr) 0}
-
-  /* 左：导航 */
-  .nav{
-    display:flex;flex-direction:column;gap:2px;
-    background:var(--c-surface);border-right:1px solid var(--c-line);
-    padding:12px 8px;overflow:hidden;
-  }
-  .nav-brand{padding:4px 8px 12px;font-size:13px;font-weight:600;color:var(--c-ink)}
-  .nav-brand small{display:block;font-weight:400;font-size:11px;color:var(--c-ink3);margin-top:2px}
-  .nav-item{
-    display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;
-    border:0;border-radius:var(--r-sm);background:transparent;color:var(--c-ink);
-    font-size:13px;text-align:left;cursor:pointer;white-space:nowrap;
-    transition:background var(--dur) ease;
-  }
-  .nav-item:hover{background:var(--c-line-soft)}
-  .nav-item[aria-current="page"]{background:var(--c-primary-soft);color:var(--c-primary);font-weight:500}
-  .nav-foot{margin-top:auto;padding:10px 8px 2px;border-top:1px solid var(--c-line-soft);
-    font-size:11px;color:var(--c-ink3);line-height:1.6;overflow:hidden}
-
-  /* 中：主区 */
-  .main{display:flex;flex-direction:column;min-width:0;overflow:hidden}
-  .toolbar{
-    display:flex;align-items:center;gap:8px;height:48px;padding:0 16px;
-    background:var(--c-surface);border-bottom:1px solid var(--c-line);flex:0 0 auto;
-  }
-  .status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--c-ink2)}
-  .status .dot{width:8px;height:8px;border-radius:50%;background:var(--c-ink3)}
-  .status .dot.run{background:var(--c-success);animation:pulseDot 1.8s ease-in-out infinite}
-  .status .dot.err{background:var(--c-danger)}
-  .status .dot.wait{background:var(--c-warn)}
-  .spacer{flex:1}
-  #msg{font-size:12px;color:var(--c-ink2);max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #msg.err{color:var(--c-danger)}
-  #msg.ok{color:var(--c-success)}
-  #msg.warn{color:var(--c-warn)}
-
-  .content{flex:1;overflow:auto;padding:13px 17px 22px;container-type:inline-size}
-  .page{display:none}
-  .page.on{display:block;animation:fadeUp 220ms ease both}
-
-  /* ---------- 动效：只用透明度和几像素位移，克制、不抢注意力 ---------- */
-  @keyframes fadeUp{
-    from{opacity:0;transform:translateY(6px)}
-    to{opacity:1;transform:none}
-  }
-  @keyframes rowIn{
-    from{opacity:0;transform:translateY(4px)}
-    to{opacity:1;transform:none}
-  }
-  @keyframes logIn{
-    from{opacity:0;transform:translateX(-4px)}
-    to{opacity:1;transform:none}
-  }
-  @keyframes pulseDot{
-    0%,100%{box-shadow:0 0 0 0 rgba(37,99,235,.45)}
-    50%{box-shadow:0 0 0 4px rgba(37,99,235,0)}
-  }
-  @keyframes fadeIn{
-    from{opacity:0}
-    to{opacity:1}
-  }
-
-  .list-row{animation:rowIn 200ms ease both}
-  .list-row:nth-child(2){animation-delay:18ms}
-  .list-row:nth-child(3){animation-delay:36ms}
-  .list-row:nth-child(4){animation-delay:54ms}
-  .list-row:nth-child(5){animation-delay:72ms}
-  .list-row:nth-child(6){animation-delay:90ms}
-  .list-row:nth-child(n+7){animation-delay:108ms}
-
-  #logs > div{animation:logIn 160ms ease both}
-  .card{animation:fadeIn 200ms ease both}
-  #update-bar:not([hidden]){animation:fadeUp 200ms ease both}
-  dialog.update[open]{animation:fadeUp 200ms ease both}
-  dialog.update[open]::backdrop{animation:fadeIn 200ms ease both}
-
-  /* 运行中让状态点轻轻呼吸，一眼看出程序还活着 */
-  @media (prefers-reduced-motion:reduce){
-    *,*::before,*::after{
-      animation-duration:.01ms !important;
-      animation-iteration-count:1 !important;
-      transition-duration:.01ms !important;
-    }
-  }
-  .page-title{font-size:15px;font-weight:600;margin:0 0 4px}
-  .page-sub{margin:0 0 10px;font-size:12px;color:var(--c-ink2)}
-
-  /* 右：日志 */
-  .logs{
-    display:flex;flex-direction:column;background:var(--c-surface);
-    border-left:1px solid var(--c-line);overflow:hidden;
-  }
-  .app.nologs .logs{border-left:0}
-  .logs-head{
-    display:flex;align-items:center;gap:8px;height:48px;padding:0 12px;
-    border-bottom:1px solid var(--c-line);flex:0 0 auto;
-  }
-  .logs-head span{font-size:12px;font-weight:600;color:var(--c-ink2)}
-  .logs-head .spacer{flex:1}
-  #logs{
-    flex:1;overflow:auto;padding:8px 12px;
-    font:11.5px/1.65 ui-monospace,"Cascadia Mono",Consolas,monospace;
-    white-space:pre-wrap;word-break:break-all;color:var(--c-ink2);
-  }
-  #logs .warn{color:var(--c-warn)}
-  #logs .err{color:var(--c-danger)}
-  #logs .ok{color:var(--c-success)}
-
-  /* ---------- 组件 ---------- */
-  .btn{
-    display:inline-flex;align-items:center;gap:6px;
-    height:28px;padding:0 12px;border:1px solid var(--c-line);border-radius:var(--r-sm);
-    background:var(--c-surface);color:var(--c-ink);font-size:12.5px;cursor:pointer;
-    white-space:nowrap;
-    transition:background var(--dur) ease,border-color var(--dur) ease;
-  }
-  .btn:hover{background:var(--c-line-soft);border-color:#c2cad3}
-  .btn:disabled{opacity:.5;cursor:not-allowed}
-  .btn.primary{background:var(--c-primary);border-color:var(--c-primary);color:#fff}
-  .btn.primary:hover{background:var(--c-primary-hover);border-color:var(--c-primary-hover)}
-  .btn.text{border-color:transparent;background:transparent;color:var(--c-primary);padding:0 6px}
-  .btn.text:hover{background:var(--c-primary-soft)}
-  kbd{
-    font:11px/1 ui-monospace,Consolas,monospace;padding:1px 4px;border:1px solid rgba(255,255,255,.4);
-    border-radius:3px;color:inherit;opacity:.75;
-  }
-  .btn:not(.primary) kbd{border-color:var(--c-line);opacity:1;color:var(--c-ink3)}
-
-  .card{
-    background:var(--c-surface);border:1px solid var(--c-line);border-radius:var(--r);
-    padding:11px 13px;margin-bottom:8px;
-  }
-  .card h3{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--c-ink2)}
-
-  label.field{display:block;margin-bottom:9px}
-  label.field > span{display:block;font-size:11.5px;color:var(--c-ink2);margin-bottom:4px}
-  .input,.select{
-    width:100%;height:30px;padding:0 8px;border:1px solid var(--c-line);border-radius:var(--r-sm);
-    background:var(--c-surface);color:var(--c-ink);
-  }
-  .input:focus,.select:focus{outline:none;border-color:var(--c-primary);box-shadow:0 0 0 2px var(--c-primary-soft)}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
-  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 14px}
-  .row{display:flex;gap:8px;align-items:flex-end}
-
-  .check{display:flex;align-items:center;gap:6px;font-size:12.5px;margin:8px 0 0;cursor:pointer}
-  .check input{width:14px;height:14px;accent-color:var(--c-primary)}
-
-  /* 列表行：紧凑表格化，替代卡片堆叠 */
-  .list{border:1px solid var(--c-line);border-radius:var(--r);background:var(--c-surface);overflow:hidden}
-  .list-row{
-    display:flex;align-items:center;gap:12px;padding:7px 12px;
-    border-bottom:1px solid var(--c-line-soft);font-size:12.5px;
-  }
-  .list-row:last-child{border-bottom:0}
-  .list-row:hover{background:var(--c-line-soft)}
-  .list-row .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .list-row .name small{color:var(--c-ink3);margin-right:6px}
-  .list-row .bar{flex:0 1 clamp(72px,18%,180px);height:6px;border-radius:3px;background:var(--c-line-soft);overflow:hidden;min-width:0}
-  .list-row .bar i{display:block;height:100%;width:0;background:var(--c-primary);transition:width var(--dur) ease}
-  .list-row.done .bar i{background:var(--c-success)}
-  .list-row.error .bar i{background:var(--c-danger)}
-  .list-row.notopen .bar i{background:var(--c-ink3)}
-  .list-row .meta{flex:0 0 auto;max-width:46%;text-align:right;font-size:11.5px;color:var(--c-ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .list-row.done .meta{color:var(--c-success)}
-  .list-row.error .meta{color:var(--c-danger)}
-  .list-row.confirming .meta{color:var(--c-warn)}
-  .list-row .actions{flex:0 0 auto;display:flex;gap:6px}
-
-  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:9px}
-  .stat{border:1px solid var(--c-line);border-radius:var(--r);background:var(--c-surface);padding:9px 11px}
-  .stat .k{font-size:11px;color:var(--c-ink2)}
-  .stat .v{font-size:18px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
-  .stat .v.ok{color:var(--c-success)}
-  .stat .v.bad{color:var(--c-danger)}
-  .stat .v.run{color:var(--c-primary)}
-
-  /* 状态：空 / 加载 / 错误 / 禁用 */
-  .state{padding:20px 12px;text-align:center;font-size:12.5px;color:var(--c-ink3);
-    border:1px dashed var(--c-line);border-radius:var(--r);background:var(--c-surface)}
-  .state.error{color:var(--c-danger);border-color:#f3c2c6;background:#fff8f8}
-  .state .hint{display:block;margin-top:6px;font-size:11.5px;color:var(--c-ink3)}
-  .state .retry{margin-top:10px}
-
-  /* ---------- 概览两栏：把右侧空白用起来 ---------- */
-  /* 默认单栏：日志面板打开时内容区只有 660px，硬分栏会把章节标题挤成 0 宽 */
-  .ov-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;align-items:start}
-  .ov-side{display:flex;flex-direction:column;gap:8px}
-  @container (min-width: 900px){
-    .ov-grid{grid-template-columns:minmax(0,1fr) 268px}
-  }
-  .side-card{background:var(--c-surface);border:1px solid var(--c-line);border-radius:var(--r);padding:11px 12px}
-  .side-card h3{display:flex;align-items:center;gap:6px;margin:0 0 8px;font-size:12px;font-weight:600;color:var(--c-ink2)}
-  .quick{display:flex;flex-direction:column;gap:5px}
-  .quick button{
-    display:flex;align-items:center;gap:8px;width:100%;height:30px;padding:0 8px;
-    border:0;border-radius:var(--r-sm);background:var(--c-line-soft);color:var(--c-ink);
-    font-size:12.5px;text-align:left;cursor:pointer;transition:background var(--dur) ease;
-  }
-  .quick button:hover{background:var(--c-primary-soft);color:var(--c-primary)}
-  .quick small{margin-left:auto;font-size:11px;color:var(--c-ink3)}
-  .side-note{margin:0;font-size:11.5px;color:var(--c-ink3);line-height:1.65}
-
-  /* ---------- 高级设置抽屉 ---------- */
-  .drawer-mask{position:fixed;inset:0;z-index:60;background:rgba(20,24,30,.28);
-    opacity:0;pointer-events:none;transition:opacity var(--dur) ease}
-  .drawer-mask.open{opacity:1;pointer-events:auto}
-  .drawer{
-    position:fixed;top:0;right:0;bottom:0;z-index:61;width:min(430px,92vw);
-    display:flex;flex-direction:column;background:var(--c-surface);
-    border-left:1px solid var(--c-line);box-shadow:-8px 0 28px rgba(31,35,40,.16);
-    transform:translateX(100%);transition:transform var(--dur) ease;
-  }
-  .drawer.open{transform:none}
-  .drawer-head{display:flex;align-items:center;gap:8px;height:46px;padding:0 14px;
-    border-bottom:1px solid var(--c-line);flex:0 0 auto;font-size:12.5px;font-weight:600}
-  .drawer-body{flex:1;overflow:auto;padding:11px 13px 18px}
-  .drawer-body .card{margin-bottom:9px}
-  .drawer .grid3{grid-template-columns:1fr 1fr}
-  .range-row{display:flex;align-items:center;gap:10px}
-  .range-row input[type=range]{flex:1;accent-color:var(--c-primary)}
-  .range-row output{flex:0 0 52px;text-align:right;font-variant-numeric:tabular-nums;
-    font-size:12px;color:var(--c-ink2)}
-
-  /* ---------- 新手教程 ---------- */
-  .welcome{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
-    background:rgba(18,22,28,.42);animation:fadeIn 180ms ease both}
-  .welcome[hidden]{display:none}
-  .wl{width:min(560px,94vw);max-height:92vh;display:flex;flex-direction:column;
-    background:var(--c-surface);border-radius:14px;overflow:hidden;
-    box-shadow:0 24px 60px rgba(16,20,26,.3);animation:fadeUp 220ms ease both}
-  .wl-illu{height:168px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(180deg,var(--c-primary-soft),var(--c-surface));
-    border-bottom:1px solid var(--c-line);color:var(--c-primary)}
-  .wl-body{padding:15px 22px 2px}
-  .wl-body h2{margin:0 0 6px;font-size:16px;font-weight:600}
-  .wl-body p{margin:0;font-size:12.5px;color:var(--c-ink2);line-height:1.7}
-  .wl-body ul{margin:9px 0 0;padding-left:16px;font-size:12.5px;color:var(--c-ink2);line-height:1.8}
-  .wl-body b{color:var(--c-ink);font-weight:600}
-  .wl-foot{display:flex;align-items:center;gap:8px;padding:13px 22px 15px}
-  .wl-dots{display:flex;gap:6px}
-  .wl-dots i{width:6px;height:6px;border-radius:50%;background:var(--c-line);transition:background var(--dur) ease}
-  .wl-dots i.on{background:var(--c-primary)}
-  .wl-skip{border:0;background:transparent;color:var(--c-ink3);font-size:12px;cursor:pointer;padding:0}
-  .wl-skip:hover{color:var(--c-ink)}
-  /* 教程翻页：插图与文字分批淡入，切页不突兀 */
-  @keyframes illuIn{from{opacity:0;transform:scale(.965)}to{opacity:1;transform:none}}
-  @keyframes stepIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
-  .wl-illu svg{animation:illuIn 420ms cubic-bezier(.22,.61,.36,1) both}
-  .wl-body h2{animation:stepIn 260ms cubic-bezier(.22,.61,.36,1) both}
-  .wl-body p{animation:stepIn 300ms 60ms cubic-bezier(.22,.61,.36,1) both}
-  .wl-body li{animation:stepIn 300ms cubic-bezier(.22,.61,.36,1) both}
-  .wl-body li:nth-child(1){animation-delay:120ms}
-  .wl-body li:nth-child(2){animation-delay:180ms}
-  .wl-body li:nth-child(3){animation-delay:240ms}
-  .welcome{transition:opacity 220ms cubic-bezier(.22,.61,.36,1)}
-  .welcome.closing{opacity:0}
-  /* ---------- 关于 ---------- */
-  .about-hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:14px 0 20px}
-  .about-avatar{
-    width:86px;height:86px;border-radius:50%;object-fit:cover;display:block;
-    border:1px solid var(--c-line);box-shadow:0 8px 22px -12px rgba(31,35,40,.45);
-    animation:avatarIn 460ms var(--ease) both;
-  }
-  @keyframes avatarIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
-  .about-name{margin:13px 0 0;font-size:19px;font-weight:600;letter-spacing:-.012em;
-    animation:stepIn 300ms 60ms var(--ease) both}
-  .about-role{margin:5px 0 0;font-size:12px;color:var(--c-ink3);
-    animation:stepIn 300ms 120ms var(--ease) both}
-  .about-intro{margin:11px auto 0;max-width:46ch;font-size:12.5px;color:var(--c-ink2);
-    line-height:1.78;animation:stepIn 320ms 180ms var(--ease) both}
-  .about-links{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:15px;
-    animation:stepIn 320ms 240ms var(--ease) both}
-  .chip{
-    display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:999px;
-    border:1px solid var(--c-line);background:var(--c-surface);color:var(--c-ink2);
-    font-size:12px;cursor:pointer;white-space:nowrap;
-    transition:color var(--dur) ease,border-color var(--dur) ease,background var(--dur) ease;
-  }
-  .chip:hover{color:var(--c-primary);border-color:#cfe0ff;background:var(--c-primary-soft)}
-
-  .about-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:8px;margin-top:4px}
-  .about-card{animation:stepIn 340ms var(--ease) both;transition:box-shadow var(--dur) ease,border-color var(--dur) ease}
-  .about-card:nth-child(1){animation-delay:300ms}
-  .about-card:nth-child(2){animation-delay:370ms}
-  .about-card:nth-child(3){animation-delay:440ms}
-  .about-card:hover{border-color:#c9d6e6;box-shadow:0 8px 22px -18px rgba(31,35,40,.5)}
-  .about-card h3{margin:0 0 9px;font-size:12px;font-weight:600;color:var(--c-ink2)}
-  .about-list{margin:0;padding-left:15px;font-size:12.5px;color:var(--c-ink2);line-height:1.8}
-  .about-list li{margin:2px 0}
-  .about-list li::marker{color:var(--c-primary)}
-  .about-list a{color:var(--c-primary)}
-  .about-foot{
-    display:flex;align-items:center;justify-content:center;gap:10px;margin-top:16px;
-    font-size:11.5px;color:var(--c-ink3);animation:stepIn 340ms 520ms var(--ease) both;
-  }
-  .about-foot b{color:var(--c-ink2);font-weight:600}
-  morph-icon{display:inline-flex;vertical-align:-2px}
-  .ni{display:inline-flex}
-
-  /* 更新提示 */
-  #update-bar{
-    display:flex;align-items:center;gap:10px;padding:6px 16px;flex:0 0 auto;
-    background:var(--c-primary-soft);border-bottom:1px solid #cfdcf8;font-size:12px;
-  }
-  #update-bar[hidden]{display:none}
-  #update-bar.warn{background:#fdf8ec;border-bottom-color:#ecd9b0;color:#7a5b00}
-
-  /* 更新弹窗 */
-  dialog.update{
-    border:1px solid var(--c-line);border-radius:var(--r);padding:0;
-    width:420px;max-width:calc(100vw - 40px);
-    background:var(--c-surface);color:var(--c-ink);
-    box-shadow:0 8px 24px rgba(31,35,40,.14);
-  }
-  dialog.update::backdrop{background:rgba(31,35,40,.28)}
-  dialog.update h2{margin:0;padding:16px 18px 0;font-size:14px;font-weight:600}
-  dialog.update .body{padding:6px 18px 0}
-  dialog.update .sub{margin:4px 0 0;font-size:12px;color:var(--c-ink3)}
-  dialog.update ul{margin:8px 0 0;padding-left:17px;color:var(--c-ink2);font-size:12.5px;line-height:1.8}
-  dialog.update .upd-block{margin-top:14px}
-  dialog.update .upd-block h4{margin:0;font-size:12px;font-weight:600;color:var(--c-ink)}
-  dialog.update .upd-flow{margin:6px 0 0;padding-left:17px;color:var(--c-ink2);font-size:12px;line-height:1.85}
-  dialog.update .hint{margin-top:8px}
-  .upd-progress{margin-top:14px}
-  .upd-progress[hidden]{display:none}
-  .upd-bar{height:6px;border-radius:3px;background:var(--c-line-soft);overflow:hidden}
-  .upd-bar i{display:block;height:100%;width:0;background:var(--c-primary);
-    transition:width 220ms ease}
-  .upd-stage{margin:8px 0 0;font-size:12px;color:var(--c-ink2);line-height:1.6}
-  .upd-stage.err{color:var(--c-danger)}
-  dialog.update li{margin:2px 0}
-  dialog.update li.upd-beta{
-    margin:0 0 6px;padding:6px 9px;border-radius:6px;list-style:none;
-    background:#fdf8ec;border:1px solid #ecd9b0;color:#7a5b00;font-size:12px;line-height:1.6;
-  }
-  dialog.update .foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px 16px}
-  dialog.update textarea{
-    width:100%;margin-top:10px;padding:8px 10px;border:1px solid var(--c-line);
-    border-radius:var(--r-sm);background:var(--c-surface);color:var(--c-ink);
-    font:12.5px/1.6 inherit;resize:vertical;
-  }
-  dialog.update textarea:focus{outline:2px solid var(--c-primary);outline-offset:-1px}
-
-  /* 人脸提示 */
-  .notice{
-    border:1px solid #ecd9b0;background:#fdf8ec;border-radius:var(--r);
-    padding:10px 12px;font-size:12.5px;color:#7a5b00;margin-bottom:10px;
-  }
-  .notice b{display:block;margin-bottom:4px}
-  .notice .btn{margin-top:8px}
-
-  /* 折叠区 */
-  details.block{border:1px solid var(--c-line);border-radius:var(--r);background:var(--c-surface);margin-bottom:10px}
-  details.block > summary{padding:9px 12px;font-size:12px;font-weight:600;color:var(--c-ink2);cursor:pointer}
-  details.block > .inner{padding:0 12px 12px}
-
-  .hint{font-size:11.5px;color:var(--c-ink3);margin:6px 0 0;line-height:1.7}
-
-  /* 设置页改动提示条：贴顶，不用滚到底就能保存 */
-  .save-bar{
-    position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:8px;
-    margin:0 0 10px;padding:8px 12px;
-    background:var(--c-primary-soft);border:1px solid #cfdcf8;border-radius:var(--r);
-    font-size:12px;color:var(--c-primary);
-  }
-  .save-bar[hidden]{display:none}
-  .save-bar .spacer{flex:1}
-  ul.dots{margin:6px 0 0;padding-left:16px;font-size:12px;color:var(--c-ink2);line-height:1.8}
-  ul.dots li{margin:2px 0}
-
-  @media (max-width:1000px){
-    .app{grid-template-columns:200px minmax(0,1fr)}
-    /* 窄屏不再隐藏日志，改成右侧抽屉：点「日志」按钮或按 Esc 开合。
-       原来直接 display:none，用户既看不到进度也看不到报错。 */
-    .logs{
-      position:fixed;top:0;right:0;bottom:0;z-index:40;
-      width:min(360px,88vw);
-      border-left:1px solid var(--c-line);
-      box-shadow:-4px 0 16px rgba(31,35,40,.14);
-      transform:translateX(0);transition:transform var(--dur) ease;
-    }
-    .app.nologs .logs{transform:translateX(100%);box-shadow:none}
-    .grid3{grid-template-columns:1fr}
-  }
-</style>
+  <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
 <div class="app" id="app">
   <aside class="nav">
-    <div class="nav-brand">超星 AI 答题<small>学习通任务助手</small></div>
-    <button class="nav-item" data-page="overview" aria-current="page"><span class="ni" id="ico-nav-overview" data-icon="Grid" data-on="GridOn"></span>概览</button>
-    <button class="nav-item" data-page="exams"><span class="ni" id="ico-nav-exams" data-icon="Exam" data-on="ExamOn"></span>考试</button>
-    <button class="nav-item" data-page="library"><span class="ni" id="ico-nav-library" data-icon="Library" data-on="LibraryOn"></span>题库</button>
-    <button class="nav-item" data-page="settings"><span class="ni" id="ico-nav-settings" data-icon="Sliders" data-on="SlidersOn"></span>设置</button>
-    <button class="nav-item" data-page="about"><span class="ni" id="ico-nav-about" data-icon="Info" data-on="InfoOn"></span>关于</button>
+    <div class="nav-brand"><b>超星 AI 答题</b><small>学习通任务助手</small></div>
+
+    <nav class="nav-group" aria-label="主导航">
+      <button class="nav-item" data-page="overview" aria-current="page"><span class="ni" data-icon="Grid"></span><span class="nav-label">概览</span></button>
+      <button class="nav-item" data-page="exams"><span class="ni" data-icon="Exam"></span><span class="nav-label">考试</span></button>
+      <button class="nav-item" data-page="library"><span class="ni" data-icon="Library"></span><span class="nav-label">题库</span></button>
+      <button class="nav-item" data-page="agent"><span class="ni" data-icon="Sparkle"></span><span class="nav-label">助教</span></button>
+      <button class="nav-item" data-page="settings"><span class="ni" data-icon="Sliders"></span><span class="nav-label">设置</span></button>
+      <button class="nav-item" data-page="about"><span class="ni" data-icon="Info"></span><span class="nav-label">关于</span></button>
+    </nav>
+
     <div class="nav-foot">
-      <div id="nav-account">未配置账号</div>
-      <div id="nav-version">—</div>
+      <div class="nav-status">
+        <div class="nav-line">
+          <span class="status"><span class="dot" id="nav-dot"></span><span id="nav-status-text">空闲</span></span>
+        </div>
+        <div class="nav-metric"><span>任务点</span><b id="nav-jobs">0 / 0</b></div>
+        <div class="nav-metric"><span>进行中</span><b id="nav-running">0</b></div>
+        <div class="nav-metric"><span>已完成</span><b id="nav-done">0</b></div>
+      </div>
+      <div class="nav-quick">
+        <button id="nav-logs"><span class="ni" data-icon="PanelLeft"></span><span class="nav-label">日志面板</span></button>
+        <button id="nav-feedback"><span class="ni" data-icon="Message"></span><span class="nav-label">反馈问题</span></button>
+        <button id="nav-tour"><span class="ni" data-icon="Sparkle"></span><span class="nav-label">新手教程</span></button>
+      </div>
+      <div class="nav-user">
+        <div id="nav-account">未配置账号</div>
+        <div id="nav-version">—</div>
+      </div>
     </div>
   </aside>
 
   <main class="main">
     <div id="update-bar" hidden>
       <span id="update-text"></span>
-      <button class="btn text" id="update-now">立即更新</button>
-      <button class="btn text" id="update-close">稍后</button>
+      <button class="btn text" id="update-now"><span class="ni" data-icon="Download"></span>立即更新</button>
+      <button class="btn text" id="update-close"><span class="ni" data-icon="Close"></span>稍后</button>
     </div>
 
     <header class="toolbar">
@@ -492,7 +87,7 @@
             <div class="side-card">
               <h3><span class="ni" data-icon="Shield"></span>怕被判定异常？</h3>
               <p class="side-note">速度太快、次次满分会更显眼。可以调低倍速、加大请求间隔，或者放慢考试节奏。</p>
-              <button class="btn" id="qk-adv" style="margin-top:8px;width:100%;justify-content:center">打开高级设置</button>
+              <button class="btn" id="qk-adv" style="margin-top:8px;width:100%;justify-content:center"><span class="ni" data-icon="Sliders"></span>打开高级设置</button>
             </div>
             <div class="side-card">
               <h3><span class="ni" data-icon="Database"></span>题库</h3>
@@ -508,17 +103,27 @@
         <p class="page-sub">先查题库，未命中再问模型；主观题会生成参考答案但不自动提交。需要验证码的考试，请先在平台上点开考试，再回来点「接管」。</p>
 
         <div class="row" style="margin-bottom:10px">
-          <button class="btn" id="btnExamRefresh">刷新考试列表</button>
+          <button class="btn" id="btnExamRefresh"><span class="ni" data-icon="Refresh"></span>刷新考试列表</button>
+          <button class="btn" id="btnExamClose" hidden><span class="ni" data-icon="Close"></span>关闭考场页面</button>
           <span class="hint" id="exam-hint" style="margin:0"></span>
         </div>
 
         <div class="notice" id="face-card" hidden>
           <b>这场考试需要人脸验证</b>
           请在你自己的学习通客户端或浏览器里完成验证（程序不会代做）。完成后点下面按钮继续答题。
-          <br><button class="btn primary" id="btnFaceDone">我已完成验证</button>
+          <br><button class="btn primary" id="btnFaceDone"><span class="ni" data-icon="Check"></span>我已完成验证</button>
         </div>
 
         <div id="exam-list"></div>
+
+        <div class="exam-stage" id="examStage">
+          <div class="exam-stage-ph">
+            <span class="ni ph-ico" data-icon="Monitor"></span>
+            <b>考场网页会显示在这里</b>
+            <span>点上方「开始」后，考场页面连同验证码一起嵌进这块区域，
+              不用在两个窗口之间来回切。</span>
+          </div>
+        </div>
       </section>
 
       <!-- 题库 -->
@@ -537,7 +142,7 @@
           <h3>本地题目</h3>
           <div class="row" style="margin-bottom:10px">
             <input class="input" id="lib-search" placeholder="按题干搜索">
-            <button class="btn" id="btnLibRefresh">刷新本地</button>
+            <button class="btn" id="btnLibRefresh"><span class="ni" data-icon="Refresh"></span>刷新本地</button>
           </div>
           <div id="lib-list"></div>
         </div>
@@ -547,12 +152,63 @@
           <div class="inner">
             <div class="row" style="margin-bottom:10px">
               <input class="input" id="remote-search" placeholder="按题干搜索">
-              <button class="btn" id="btnRemoteRefresh">刷新共享</button>
+              <button class="btn" id="btnRemoteRefresh"><span class="ni" data-icon="Refresh"></span>刷新共享</button>
             </div>
             <div id="remote-list"></div>
             <p class="hint">整卷全对收录的答案权重更高；部分正确的需要多人给出一致答案才会采用。</p>
           </div>
         </details>
+      </section>
+
+      <!-- 助教 -->
+      <section class="page" id="page-agent">
+        <h1 class="page-title">助教</h1>
+        <p class="page-sub">把题库从头理一遍。答案为空、选项缺失、两题重复这种，本机直接算，不花钱；
+          只有「答案对不对」才交给模型判断。结论只是建议，改不改由你点。</p>
+
+        <div class="agent-stats" id="agent-stats">
+          <div class="agent-stat"><b id="as-total">–</b><span>题库总数</span></div>
+          <div class="agent-stat"><b id="as-ok">–</b><span>确认无误</span></div>
+          <div class="agent-stat"><b id="as-suspect">–</b><span>存疑</span></div>
+          <div class="agent-stat"><b id="as-broken">–</b><span>数据有毛病</span></div>
+          <div class="agent-stat"><b id="as-dup">–</b><span>重复</span></div>
+        </div>
+
+        <div class="card">
+          <h3>体检</h3>
+          <div class="grid2">
+            <label class="field"><span>这轮最多问模型多少道（越多越贵）</span>
+              <input class="input" id="agent-max" type="number" value="80" min="1" max="500">
+            </label>
+            <label class="field"><span>选项</span>
+              <div style="display:flex;flex-direction:column;gap:6px;padding-top:6px">
+                <label class="chk"><input type="checkbox" id="agent-use-model" checked> 让模型判断答案对不对</label>
+                <label class="chk"><input type="checkbox" id="agent-use-search" checked> 判错的题联网复核</label>
+                <label class="chk"><input type="checkbox" id="agent-only-new"> 只查还没审过的</label>
+              </div>
+            </label>
+          </div>
+          <div class="row">
+            <button class="btn primary" id="btnAgentRun"><span class="ni" data-icon="Stethoscope"></span>开始体检</button>
+            <button class="btn" id="btnAgentUpload"><span class="ni" data-icon="Upload"></span>上报通过审查的题</button>
+            <span class="hint" id="agent-hint" style="margin:0"></span>
+          </div>
+          <p class="hint" style="margin:8px 0 0" id="agent-model-hint"></p>
+        </div>
+
+        <div class="card">
+          <div class="row" style="justify-content:space-between;margin-bottom:9px">
+            <h3 style="margin:0">审查结果</h3>
+            <div class="row" style="margin:0">
+              <button class="btn sm" data-agent-filter="">全部</button>
+              <button class="btn sm" data-agent-filter="suspect">存疑</button>
+              <button class="btn sm" data-agent-filter="broken">数据问题</button>
+              <button class="btn sm" data-agent-filter="dup">重复</button>
+              <button class="btn sm" data-agent-filter="ok">通过</button>
+            </div>
+          </div>
+          <div id="agent-list"></div>
+        </div>
       </section>
 
       <!-- 设置 -->
@@ -561,7 +217,7 @@
         <div class="save-bar" id="save-bar" hidden>
           <span>有未保存的改动</span>
           <span class="spacer"></span>
-          <button class="btn primary" id="btnSaveTop">保存配置</button>
+          <button class="btn primary" id="btnSaveTop"><span class="ni" data-icon="Save"></span>保存配置</button>
         </div>
         <p class="page-sub">配置只保存在本机，不会上传到服务器。</p>
 
@@ -572,7 +228,7 @@
             <label class="field"><span>密码</span><input class="input" type="password" id="password" placeholder="登录密码" autocomplete="current-password"></label>
           </div>
           <label class="field"><span>补充课程 ID（可选，逗号分隔；留空且不勾选会刷全部课程）</span><input class="input" id="manual_ids" placeholder="例如 268309938"></label>
-          <button class="btn" id="btnCourses">拉取课程列表</button>
+          <button class="btn" id="btnCourses"><span class="ni" data-icon="FolderSync"></span>拉取课程列表</button>
           <div id="courses" style="margin-top:10px"></div>
         </div>
 
@@ -581,7 +237,7 @@
           <label class="field"><span>接口地址（OpenAI 兼容）</span><input class="input" id="endpoint" value="https://api.deepseek.com"></label>
           <div class="grid2">
             <label class="field"><span>API Key</span><input class="input" type="password" id="api_key" placeholder="sk-..."></label>
-            <label class="field"><span>模型</span><div class="row"><select class="select" id="model"><option value="">先获取模型</option></select><button class="btn" id="btnModels">获取模型</button></div></label>
+            <label class="field"><span>模型</span><div class="row"><select class="select" id="model"><option value="">先获取模型</option></select><button class="btn" id="btnModels"><span class="ni" data-icon="Refresh"></span>获取模型</button></div></label>
           </div>
           <div class="grid2">
             <label class="field"><span>视觉模型（带配图题用，留空关闭）</span><select class="select" id="vision_model"><option value="">不使用</option></select></label>
@@ -594,7 +250,32 @@
               </select>
             </label>
           </div>
-          <button class="btn" id="btnTest">测试连接</button>
+          <button class="btn" id="btnTest"><span class="ni" data-icon="Plug"></span>测试连接</button>
+        </div>
+
+        <div class="card">
+          <h3>联网搜索</h3>
+          <p class="hint" style="margin:0 0 9px">助教核对答案时用来查资料。支持博查、Tavily 这类搜索 API，
+            填完整请求地址即可（例如 https://api.bochaai.com/v1/web-search）。不填就只靠本地题库。</p>
+          <div class="grid2">
+            <label class="field"><span>搜索接口地址</span><input class="input" id="search_url" placeholder="https://api.bochaai.com/v1/web-search"></label>
+            <label class="field"><span>搜索 API Key</span><input class="input" type="password" id="search_key" placeholder="留空则沿用上次保存的"></label>
+          </div>
+          <div class="row">
+            <button class="btn" id="btnTestSearch"><span class="ni" data-icon="Search"></span>测试搜索</button>
+            <label class="chk" style="margin-left:4px"><input type="checkbox" id="search_enabled" checked> 启用联网搜索</label>
+            <span class="hint" id="search-hint" style="margin:0"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>助教模型</h3>
+          <p class="hint" style="margin:0 0 9px">留空就沿用上面的大模型配置。想让助教用别的模型（更便宜或更擅长判断）才需要填。</p>
+          <div class="grid2">
+            <label class="field"><span>接口地址</span><input class="input" id="agent_url" placeholder="留空沿用上面"></label>
+            <label class="field"><span>模型</span><input class="input" id="agent_model" placeholder="留空沿用上面"></label>
+          </div>
+          <label class="field"><span>API Key</span><input class="input" type="password" id="agent_key" placeholder="留空沿用上面"></label>
         </div>
 
         <div class="card">
@@ -611,7 +292,7 @@
           <div class="row">
             <span class="hint" style="margin:0">当前版本 <b id="ver-current">—</b></span>
             <span class="spacer" style="flex:1"></span>
-            <button class="btn" id="btnCheckUpdate">检查更新</button>
+            <button class="btn" id="btnCheckUpdate"><span class="ni" data-icon="Refresh"></span>检查更新</button>
           </div>
           <div class="hint" id="update-info"></div>
           <details class="block" style="margin:10px 0 0;box-shadow:none">
@@ -622,7 +303,7 @@
 
         <div class="card">
           <h3>保存</h3>
-          <button class="btn primary" id="btnSave">保存配置<kbd>Ctrl+S</kbd></button>
+          <button class="btn primary" id="btnSave"><span class="ni" data-icon="Save"></span>保存配置<kbd>Ctrl+S</kbd></button>
           <p class="hint">密码和 Key 留空表示沿用上次保存的值。</p>
         </div>
       </section>
@@ -645,7 +326,7 @@
 
         <div class="about-grid">
           <div class="card about-card">
-            <h3>这个程序做什么</h3>
+            <h3><span class="ni" data-icon="Info"></span>这个程序做什么</h3>
             <ul class="about-list">
               <li>在桌面端跑，账号和 API Key 用 Windows 加密存在本机</li>
               <li>答题先查题库，只有平台判过满分、多人给出同一答案，或者你自己确认过的才会被复用</li>
@@ -653,7 +334,7 @@
             </ul>
           </div>
           <div class="card about-card">
-            <h3>用到的技术</h3>
+            <h3><span class="ni" data-icon="Key"></span>用到的技术</h3>
             <ul class="about-list">
               <li>Python 3.12 与 Flask，界面由 pywebview 嵌入 WebView2</li>
               <li>题库存 SQLite，指纹用题干加排序后的选项一起算</li>
@@ -661,7 +342,7 @@
             </ul>
           </div>
           <div class="card about-card">
-            <h3>遇到问题</h3>
+            <h3><span class="ni" data-icon="Message"></span>遇到问题</h3>
             <ul class="about-list">
               <li>点右上角「反馈」，最近的日志会一起发过来</li>
               <li>也可以到 <a href="https://github.com/shisjsji/chaoxing-ai/issues" target="_blank" rel="noopener">GitHub 开 issue</a></li>
@@ -684,7 +365,7 @@
     <div class="drawer-head">
       <span class="ni" data-icon="Sliders"></span><span>高级设置</span>
       <span class="spacer" style="flex:1"></span>
-      <button class="btn text" id="adv-close">关闭</button>
+      <button class="btn text" id="adv-close"><span class="ni" data-icon="Close"></span>关闭</button>
     </div>
     <div class="drawer-body">
       <div class="card">
@@ -718,8 +399,8 @@
       </div>
 
       <div class="row">
-        <button class="btn primary" id="adv-save">保存配置</button>
-        <button class="btn" id="adv-reset">恢复默认</button>
+        <button class="btn primary" id="adv-save"><span class="ni" data-icon="Save"></span>保存配置</button>
+        <button class="btn" id="adv-reset"><span class="ni" data-icon="RotateCw"></span>恢复默认</button>
       </div>
     </div>
   </aside>
@@ -736,8 +417,8 @@
         <span class="spacer" style="flex:1"></span>
         <div class="wl-dots" id="wl-dots"></div>
         <span style="width:6px"></span>
-        <button class="btn" id="wl-prev">上一步</button>
-        <button class="btn primary" id="wl-next">下一步</button>
+        <button class="btn" id="wl-prev"><span class="ni" data-icon="ArrowLeft"></span>上一步</button>
+        <button class="btn primary" id="wl-next"><span class="ni" data-icon="ArrowRight"></span>下一步</button>
       </div>
     </div>
   </div>
@@ -746,9 +427,9 @@
     <div class="logs-head">
       <span>日志</span>
       <span class="spacer"></span>
-      <button class="btn text" id="btnLogFeedback" title="把当前日志一起发给我">反馈</button>
-      <button class="btn text" id="btnLogClear">清空</button>
-      <button class="btn text" id="btnSysOnly">只看系统</button>
+      <button class="btn text" id="btnLogFeedback" title="把当前日志一起发给我"><span class="ni" data-icon="Message"></span>反馈</button>
+      <button class="btn text" id="btnLogClear"><span class="ni" data-icon="Trash"></span>清空</button>
+      <button class="btn text" id="btnSysOnly"><span class="ni" data-icon="Monitor"></span>只看系统</button>
     </div>
     <div id="logs"></div>
   </aside>
@@ -766,8 +447,8 @@
     </label>
   </div>
   <div class="foot">
-    <button class="btn" id="feedback-cancel">取消</button>
-    <button class="btn primary" id="feedback-send">发送</button>
+    <button class="btn" id="feedback-cancel"><span class="ni" data-icon="Close"></span>取消</button>
+    <button class="btn primary" id="feedback-send"><span class="ni" data-icon="Upload"></span>发送</button>
   </div>
 </dialog>
 
@@ -796,1367 +477,21 @@
     </div>
   </div>
   <div class="foot">
-    <button class="btn" id="update-later">稍后</button>
-    <button class="btn primary" id="update-go">立即更新</button>
+    <button class="btn" id="update-later"><span class="ni" data-icon="Clock"></span>稍后</button>
+    <button class="btn primary" id="update-go"><span class="ni" data-icon="Download"></span>立即更新</button>
   </div>
 </dialog>
 
-<script>
-const $ = id => document.getElementById(id);
-const SEP = '\x1f';
-const MAX_LINES = 2000;
-
-const STATE_LABEL = {
-  pending: '等待中', running: '进行中', confirming: '等待平台确认',
-  done: '已完成', error: '失败', notopen: '未开放'
-};
-const LEVEL_LABEL = {TRACE:'跟踪', DEBUG:'调试', INFO:'信息', WARNING:'警告', ERROR:'错误', CRITICAL:'严重'};
-
-let since = 0, pollFails = 0, sysOnly = false, chapSeq = 0;
-const chapMap = new Map();
-let examCourses = [], examTimer = null, pendingUpdate = null;
-let savedCourseIds = [];   // 已保存的课程，用来恢复勾选状态，不回填手填框
-
-/* ---------- 导航 ---------- */
-document.querySelectorAll('.nav-item').forEach(btn => {
-  btn.onclick = () => switchPage(btn.dataset.page);
-});
-
-/* 导航图标成对：data-icon 是常态，data-on 是强调态，切换与悬停时形变 */
-function navIcon(page, on) {
-  const slot = document.getElementById('ico-nav-' + page);
-  if (!slot) return;
-  const name = on ? slot.dataset.morphOn : slot.dataset.morphOff;
-  if (name) window.setIcon('ico-nav-' + page, name);
-}
-
-function syncNavIcons(current) {
-  document.querySelectorAll('.nav-item').forEach(b => {
-    const page = b.dataset.page;
-    navIcon(page, page === current);
-  });
-}
-
-let navHoverWired = false;
-function wireNavHover() {
-  if (navHoverWired) return;
-  navHoverWired = true;
-  document.querySelectorAll('.nav-item').forEach(b => {
-    const page = b.dataset.page;
-    b.addEventListener('mouseenter', () => {
-      if (b.getAttribute('aria-current') !== 'page') navIcon(page, true);
-    });
-    b.addEventListener('mouseleave', () => {
-      if (b.getAttribute('aria-current') !== 'page') navIcon(page, false);
-    });
-  });
-}
-
-function switchPage(page) {
-  document.querySelectorAll('.nav-item').forEach(b =>
-    b.setAttribute('aria-current', b.dataset.page === page ? 'page' : 'false'));
-  document.querySelectorAll('.page').forEach(p => p.classList.toggle('on', p.id === 'page-' + page));
-  syncNavIcons(page);
-  wireNavHover();
-  if (page === 'library') loadLibrary();
-  if (page === 'exams' && !examCourses.length) loadExams();
-}
-
-/* ---------- 通用 ---------- */
-function setMsg(text, kind) {
-  const el = $('msg');
-  el.textContent = text || '';
-  el.className = kind || '';
-}
-
-function emptyState(text, hint, retryFn) {
-  const box = document.createElement('div');
-  box.className = 'state';
-  box.textContent = text;
-  if (hint) {
-    const h = document.createElement('span');
-    h.className = 'hint';
-    h.textContent = hint;
-    box.appendChild(h);
-  }
-  if (retryFn) {
-    const b = document.createElement('button');
-    b.className = 'btn retry';
-    b.textContent = '重试';
-    b.onclick = retryFn;
-    box.appendChild(b);
-  }
-  return box;
-}
-
-function errorState(text, retryFn) {
-  const box = emptyState(text, '', retryFn);
-  box.className = 'state error';
-  return box;
-}
-
-async function post(url, body) {
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(body || {})
-  });
-  let data = {};
-  try { data = await r.json(); } catch (e) {}
-  if (!r.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + r.status));
-  return data;
-}
-
-function courseListForSave(checked, ids) {
-  // 课程列表还没渲染时（没点「获取课程」），勾选状态无从得知，
-  // 这时沿用手上已有的课程，别把用户选好的课悄悄清空。
-  const rendered = document.querySelectorAll('#courses input').length > 0;
-  const base = rendered ? checked : savedCourseIds;
-  return [...new Set([...base, ...ids])];
-}
-
-function formData() {
-  const ids = $('manual_ids').value.split(/[,，\s]+/).filter(Boolean);
-  const checked = [...document.querySelectorAll('#courses input:checked')].map(x => x.value);
-  return {
-    username: $('username').value.trim(),
-    password: $('password').value,
-    api_key: $('api_key').value.trim(),
-    endpoint: $('endpoint').value.trim(),
-    model: $('model').value,
-    vision_model: $('vision_model').value,
-    reasoning_effort: $('reasoning_effort').value,
-    speed: parseFloat($('speed').value) || 1,
-    jobs: parseInt($('jobs').value, 10) || 2,
-    min_interval: parseInt($('min_interval').value, 10) || 0,
-    notopen_action: $('notopen_action').value,
-    submit: $('submit').checked,
-    work_redo_enabled: $('work_redo_enabled').checked,
-    target_accuracy: parseInt($('target_accuracy').value, 10),
-    exam_answer_gap: parseFloat($('exam_answer_gap').value) || 0,
-    exam_min_minutes: parseFloat($('exam_min_minutes').value) || 0,
-    exam_hold_seconds: parseFloat($('exam_hold_seconds').value) || 0,
-    course_list: courseListForSave(checked, ids)
-  };
-}
-
-
-/* ---------- 操作日志：每次点击都进日志面板 ---------- */
-let lastClickLabel = '';
-let lastClickAt = 0;
-
-function currentPageLabel() {
-  const active = document.querySelector('.nav-item[aria-current="page"]');
-  return active ? (active.textContent || '').trim() : '';
-}
-
-document.addEventListener('click', (e) => {
-  const el = e.target.closest('button, a, .nav-item, [data-log]');
-  if (!el) return;
-  // 只取 id、页面名或按钮文字；输入框里的内容一律不碰
-  let label = el.dataset.log || (el.textContent || '').trim() || el.id || el.dataset.page;
-  label = String(label).replace(/\s+/g, ' ').slice(0, 40);
-  if (!label) return;
-  const now = Date.now();
-  if (label === lastClickLabel && now - lastClickAt < 400) return;
-  lastClickLabel = label;
-  lastClickAt = now;
-  fetch('/api/client-log', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({action: label, page: currentPageLabel()})
-  }).catch(() => {});
-}, true);
-
-/* ---------- 图标：交给 morphicons 做形变 ---------- */
-const ICON_SIZE = 16;
-
-window.setIcon = function (id, name) {
-  const icons = window.MORPH_ICONS;
-  if (!icons || !icons[name]) return;
-  const el = document.getElementById(id);
-  if (!el || el.tagName.toLowerCase() !== 'morph-icon') return;
-  // 状态轮询每秒一次，形状没变就别重新触发形变，否则动画一直被重置
-  if (el.dataset.morph === name) return;
-  el.dataset.morph = name;
-  try { el.morphTo(icons[name], 'snappy'); } catch (e) {}
-};
-
-/* 由 /static/app-icons.js（ESM）在模块加载完后调用 */
-window.initIcons = function () {
-  const icons = window.MORPH_ICONS;
-  if (!icons || !window.morphIcon) return;
-  document.querySelectorAll('.ni[data-icon]').forEach(slot => {
-    const icon = icons[slot.dataset.icon];
-    if (!icon) return;
-    const el = window.morphIcon(icon, { size: ICON_SIZE });
-    if (slot.id) el.id = slot.id;
-    el.dataset.morph = slot.dataset.icon;
-    el.dataset.morphOff = slot.dataset.icon;
-    if (slot.dataset.on) el.dataset.morphOn = slot.dataset.on;
-    el.setAttribute('aria-hidden', 'true');
-    slot.replaceWith(el);
-  });
-  syncLogsIcon();
-  window.syncStartIcon();
-  const current = document.querySelector('.nav-item[aria-current="page"]');
-  if (current) syncNavIcons(current.dataset.page);
-  wireNavHover();
-};
-
-window.syncStartIcon = function () {
-  const cls = document.getElementById('status-dot');
-  const running = cls && cls.classList.contains('run');
-  window.setIcon('ico-start', running ? 'Pause' : 'Play');
-};
-
-/* ---------- 高级设置抽屉 ---------- */
-function openAdv() {
-  $('adv-mask').classList.add('open');
-  $('adv-drawer').classList.add('open');
-  $('adv-drawer').setAttribute('aria-hidden', 'false');
-}
-function closeAdv() {
-  $('adv-mask').classList.remove('open');
-  $('adv-drawer').classList.remove('open');
-  $('adv-drawer').setAttribute('aria-hidden', 'true');
-}
-$('btnAdvOpen').onclick = openAdv;
-$('qk-adv').onclick = openAdv;
-$('adv-close').onclick = closeAdv;
-$('adv-mask').onclick = closeAdv;
-$('adv-save').onclick = () => { saveConfig(); };
-$('adv-reset').onclick = () => {
-  if (!confirm('把这几项恢复成默认值？账号和 Key 不受影响。')) return;
-  $('speed').value = 1.5;
-  $('jobs').value = 2;
-  $('min_interval').value = 2;
-  $('notopen_action').value = 'retry';
-  $('submit').checked = true;
-  $('work_redo_enabled').checked = false;
-  $('target_accuracy').value = 100;
-  $('acc-val').textContent = '100%';
-  $('exam_answer_gap').value = 3;
-  $('exam_min_minutes').value = 0;
-  $('exam_hold_seconds').value = 0;
-};
-$('target_accuracy').oninput = (e) => {
-  const v = parseInt(e.target.value, 10);
-  $('acc-val').textContent = v + '%';
-};
-
-/* 概览页的快捷入口 */
-$('qk-config').onclick = () => switchPage('settings');
-$('qk-courses').onclick = () => { switchPage('settings'); $('btnCourses').click(); };
-$('qk-start').onclick = () => { if (!$('btnStart').disabled) $('btnStart').click(); };
-
-/* ---------- 新手教程 ---------- */
-const ILLU = {
-  welcome: `<svg viewBox="0 0 320 150" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="58" y="30" width="204" height="94" rx="8" opacity=".5"/>
-    <rect x="70" y="42" width="180" height="70" rx="6"/>
-    <path d="M70 58h180" opacity=".5"/>
-    <circle cx="80" cy="50" r="2.4" fill="currentColor" stroke="none"/>
-    <circle cx="89" cy="50" r="2.4" fill="currentColor" stroke="none" opacity=".5"/>
-    <path d="M86 80h56M86 92h88" opacity=".7"/>
-    <path d="M232 80l14 8-14 8z" fill="currentColor" stroke="none" opacity=".85"/>
-  </svg>`,
-  account: `<svg viewBox="0 0 320 150" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="64" y="34" width="192" height="82" rx="9"/>
-    <path d="M64 52h192" opacity=".5"/>
-    <rect x="78" y="64" width="86" height="14" rx="4" opacity=".65"/>
-    <rect x="78" y="88" width="120" height="14" rx="4" opacity=".65"/>
-    <path d="M196 64h44" opacity=".35"/>
-    <circle cx="248" cy="52" r="5" opacity=".8"/>
-    <path d="M36 76a12 12 0 0 1 12-12h6" opacity=".0"/>
-    <rect x="246" y="88" width="24" height="14" rx="4" fill="currentColor" stroke="none" opacity=".85"/>
-  </svg>`,
-  key: `<svg viewBox="0 0 320 150" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="104" cy="75" r="22"/>
-    <circle cx="104" cy="75" r="8" opacity=".5"/>
-    <path d="M126 75h94"/>
-    <path d="M196 75v16M212 75v11"/>
-    <path d="M150 40h96" opacity=".3"/>
-    <path d="M150 110h64" opacity=".3"/>
-    <path d="M60 48l6 6M60 102l6-6" opacity=".5"/>
-  </svg>`,
-  run: `<svg viewBox="0 0 320 150" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="58" y="36" width="204" height="78" rx="9" opacity=".55"/>
-    <circle cx="86" cy="56" r="4" fill="currentColor" stroke="none"/>
-    <path d="M100 56h74" opacity=".5"/>
-    <rect x="74" y="74" width="120" height="10" rx="5" opacity=".45"/>
-    <rect x="74" y="74" width="76" height="10" rx="5" fill="currentColor" stroke="none" opacity=".8"/>
-    <rect x="74" y="92" width="140" height="10" rx="5" opacity=".45"/>
-    <rect x="74" y="92" width="40" height="10" rx="5" fill="currentColor" stroke="none" opacity=".55"/>
-    <path d="M216 66l22 11-22 11z" fill="currentColor" stroke="none" opacity=".9"/>
-  </svg>`,
-  library: `<svg viewBox="0 0 320 150" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <ellipse cx="160" cy="52" rx="46" ry="14"/>
-    <path d="M114 52v42c0 8 21 14 46 14s46-6 46-14V52"/>
-    <path d="M114 73c0 8 21 14 46 14s46-6 46-14" opacity=".5"/>
-    <path d="M92 118h136" opacity=".35"/>
-    <path d="M124 108l10 8 20-18" opacity=".85"/>
-  </svg>`,
-};
-
-const TOUR = [
-  {
-    title: '把重复的刷课交给程序',
-    illu: 'welcome',
-    text: `<p>这个程序帮你把学习通的视频任务点、章节测验和考试自动跑完，进度和日志都看得见。</p>
-      <ul><li>视频自动播放、播完自动进下一节</li>
-      <li>章节测验先查题库，没命中再问大模型</li>
-      <li>题库只复用验证过的答案，猜的不会拿出来用</li></ul>`,
-  },
-  {
-    title: '第一步：填学习通账号',
-    illu: 'account',
-    text: `<p>到「设置 → 学习通账号」填手机号和密码，点「拉取课程列表」，勾选要跑的课。</p>
-      <ul><li>密码和 API Key 用 Windows 加密存在本机，不上传服务器</li>
-      <li>只刷勾选的课程，不勾会问你要不要刷全部</li></ul>`,
-  },
-  {
-    title: '第二步：配一个大模型',
-    illu: 'key',
-    text: `<p>题库没命中时需要模型兜底。到 <b>设置 → 大模型</b> 填写接口地址和 API Key：</p>
-      <ul>
-        <li>推荐 DeepSeek：到 <b>platform.deepseek.com</b> 注册，在「API keys」里新建一个，<b>sk-</b> 开头</li>
-        <li>接口地址保持 <b>https://api.deepseek.com</b>，模型选 <b>deepseek-chat</b></li>
-        <li>填完点「获取模型」再点「测试连接」，两个都通过就能用</li>
-      </ul>`,
-  },
-  {
-    title: '第三步：点开始，然后去忙别的',
-    illu: 'run',
-    text: `<p>回到「概览」点右上角「开始运行」。程序按课程并发处理，进度逐章显示，随时可以停。</p>
-      <ul><li>关掉窗口不会退出，会收进系统托盘继续跑</li>
-      <li>速度、并发、考试节奏都在「高级设置」抽屉里</li></ul>`,
-  },
-  {
-    title: '题库与考试怎么用',
-    illu: 'library',
-    text: `<p>答过的题会进本地题库。只有<b>平台判分满分</b>、<b>双答一致</b>或<b>共享库多人一致</b>的答案才会被复用。</p>
-      <ul>
-        <li>考试同样先查题库；图形验证码和人脸验证需要你自己完成</li>
-        <li>题库页能看到每道题的「依据」，也能手工确认或标错</li>
-      </ul>`,
-  },
-];
-
-const TOUR_KEY = 'chaoxing.tour.v1';
-let tourStep = 0;
-
-function renderTour() {
-  const item = TOUR[tourStep];
-  $('wl-title').textContent = item.title;
-  $('wl-illu').innerHTML = ILLU[item.illu] || '';
-  $('wl-text').innerHTML = item.text;
-  $('wl-dots').innerHTML = TOUR.map((_, i) => `<i class="${i === tourStep ? 'on' : ''}"></i>`).join('');
-  $('wl-prev').style.display = tourStep ? '' : 'none';
-  $('wl-next').textContent = tourStep === TOUR.length - 1 ? '开始使用' : '下一步';
-}
-
-function openTour() {
-  tourStep = 0;
-  renderTour();
-  $('welcome').hidden = false;
-}
-
-function closeTour() {
-  const box = $('welcome');
-  box.classList.add('closing');
-  try { localStorage.setItem(TOUR_KEY, 'seen'); } catch (e) {}
-  setTimeout(() => { box.hidden = true; box.classList.remove('closing'); }, 200);
-}
-
-$('wl-next').onclick = () => {
-  if (tourStep < TOUR.length - 1) { tourStep++; renderTour(); return; }
-  closeTour();
-};
-$('wl-prev').onclick = () => { if (tourStep > 0) { tourStep--; renderTour(); } };
-$('wl-skip').onclick = closeTour;
-$('btnTour').onclick = openTour;
-
-try {
-  if (!localStorage.getItem(TOUR_KEY)) openTour();
-} catch (e) { openTour(); }
-
-/* ---------- 日志面板 ---------- */
-function logLine(item) {
-  const div = document.createElement('div');
-  const lv = LEVEL_LABEL[item.lv] || '';
-  div.textContent = '[' + item.t + ']' + (lv ? ' ' + lv + '：' : ' ') + item.m;
-  if (item.lv === 'ERROR') div.className = 'err';
-  else if (item.lv === 'WARNING') div.className = 'warn';
-  else if (/(完成|成功|正确)/.test(item.m)) div.className = 'ok';
-  return div;
-}
-
-function trimLines(box) {
-  while (box.childElementCount > MAX_LINES) box.removeChild(box.firstChild);
-}
-
-function appendLog(item) {
-  if (sysOnly && item.ch) return;
-  const box = $('logs');
-  const lv = LEVEL_LABEL[item.lv] || '';
-  const text = '[' + item.t + ']' + (lv ? ' ' + lv + '：' : ' ') + item.m;
-  const last = box.lastElementChild;
-  if (item.kind === 'progress' && last && last.dataset.kind === 'progress') {
-    last.textContent = text;
-    return;
-  }
-  const el = logLine(item);
-  if (item.kind === 'progress') el.dataset.kind = 'progress';
-  box.appendChild(el);
-  trimLines(box);
-  box.scrollTop = box.scrollHeight;
-}
-
-// 窄屏下日志默认收起，点「日志」按钮拉出来
-if (window.innerWidth <= 1000) $('app').classList.add('nologs');
-function syncLogsIcon() {
-  window.setIcon('ico-logs', $('app').classList.contains('nologs') ? 'PanelRight' : 'PanelLeft');
-}
-$('btnLogs').onclick = () => { $('app').classList.toggle('nologs'); syncLogsIcon(); };
-// 设置页里按 Enter 等同于保存（输入框内），符合桌面表单习惯
-document.querySelectorAll('#page-settings input').forEach(el => {
-  el.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); $('btnSave').click(); }
-  });
-});
-
-$('btnLogFeedback').onclick = () => {
-  $('feedback-logs').checked = true;
-  $('feedback-dialog').showModal();
-};
-
-$('btnLogClear').onclick = () => {
-  if (!$('logs').childElementCount) return;
-  if (!confirm('清空当前日志？清空后无法恢复。')) return;
-  $('logs').innerHTML = '';
-};
-$('btnSysOnly').onclick = () => {
-  sysOnly = !sysOnly;
-  $('btnSysOnly').textContent = sysOnly ? '显示全部' : '只看系统';
-  $('logs').innerHTML = '';
-  since = 0;
-};
-
-/* ---------- 章节列表 ---------- */
-function splitKey(key) {
-  const i = key.indexOf(SEP);
-  return i < 0 ? {course: '', name: key} : {course: key.slice(0, i), name: key.slice(i + 1)};
-}
-
-function ensureChap(key, name, course) {
-  if (chapMap.has(key)) {
-    const rec = chapMap.get(key);
-    if (name) { rec.nameEl.textContent = name; rec.courseEl.textContent = course || ''; }
-    if (!rec.row.isConnected) $('chapters').appendChild(rec.row);
-    return rec;
-  }
-  const row = document.createElement('div');
-  row.className = 'list-row';
-  row.innerHTML =
-    '<span class="name"><small class="course"></small><span class="title"></span></span>' +
-    '<span class="bar"><i></i></span>' +
-    '<span class="meta"></span>';
-  const rec = {
-    row,
-    nameEl: row.querySelector('.title'),
-    courseEl: row.querySelector('.course'),
-    bar: row.querySelector('.bar i'),
-    meta: row.querySelector('.meta'),
-    baseOrder: chapSeq++
-  };
-  rec.nameEl.textContent = name || key;
-  rec.courseEl.textContent = (course || '') + (course ? ' / ' : '');
-  row.dataset.base = String(rec.baseOrder);
-  row.dataset.state = 'pending';
-  $('chapters').appendChild(row);
-  chapMap.set(key, rec);
-  return rec;
-}
-
-function ensureList() {
-  let box = $('chapters').querySelector('.list');
-  if (!box) {
-    $('chapters').innerHTML = '';
-    box = document.createElement('div');
-    box.className = 'list';
-    box.style.display = 'flex';
-    box.style.flexDirection = 'column';
-    $('chapters').appendChild(box);
-  }
-  return box;
-}
-
-function updateChap(c) {
-  const key = c.key || c.name;
-  ensureList();
-  const rec = ensureChap(key, c.name, c.course);
-  const state = c.state || 'pending';
-  ['done', 'error', 'notopen'].forEach(k => rec.row.classList.toggle(k, state === k));
-  const total = c.total || 0, done = c.done || 0;
-  let pct = c.pct || 0;
-  if (total > 0 && c.video_pct && done < total && (state === 'running' || state === 'confirming')) {
-    pct = Math.round(((done + c.video_pct / 100) / total) * 100);
-  }
-  rec.bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
-  let text = STATE_LABEL[state] || state;
-  if (total) text += ' ' + done + '/' + total;
-  if (c.video_total && state !== 'done' && state !== 'error') text += ' · ' + (c.video_pct || 0) + '%';
-  rec.meta.textContent = text;
-  // 正在跑的置顶；多个任务同时跑时，最近有动静的排最前
-  const active = state === 'running' || state === 'confirming';
-  rec.row.dataset.state = state;
-  reorderChapters();
-}
-
-function reorderChapters() {
-  const box = chapters.querySelector('.list');
-  if (!box) return;
-  const rows = Array.from(box.children);
-  const want = rows.slice().sort((a, b) => {
-    const aa = a.dataset.state === 'running' || a.dataset.state === 'confirming';
-    const ba = b.dataset.state === 'running' || b.dataset.state === 'confirming';
-    if (aa !== ba) return aa ? -1 : 1;
-    return Number(a.dataset.base || 0) - Number(b.dataset.base || 0);
-  });
-  // 顺序没变就不动 DOM，避免每秒重排造成闪烁
-  if (want.every((r, i) => r === rows[i])) return;
-  want.forEach(r => box.appendChild(r));
-}
-
-function setStat(id, value) {
-  const el = $(id);
-  const text = String(value);
-  if (el.textContent !== text) el.textContent = text;
-}
-
-function updateStats(chapters) {
-  let running = 0, done = 0, error = 0, jobsDone = 0, jobsTotal = 0;
-  chapters.forEach(c => {
-    if (c.state === 'running' || c.state === 'confirming') running++;
-    else if (c.state === 'done') done++;
-    else if (c.state === 'error') error++;
-    jobsDone += c.done || 0;
-    jobsTotal += c.total || 0;
-  });
-  setStat('st-running', running);
-  setStat('st-done', done);
-  setStat('st-error', error);
-  setStat('st-jobs', jobsDone + ' / ' + jobsTotal);
-
-  if (!chapters.length) {
-    const box = $('chapters');
-    if (!box.querySelector('.state')) {
-      box.innerHTML = '';
-      // 行被清掉了，映射表也得清 —— 否则下一次数据回来时
-      // ensureChap 还以为是老行，结果永远不再渲染
-      chapMap.clear();
-      chapSeq = 0;
-      box.appendChild(emptyState('还没有任务数据', '到「设置」填好账号和模型，再点右上角「开始运行」。'));
-    }
-  }
-}
-
-function resetView(keepSince) {
-  if (!keepSince) since = 0;
-  chapMap.clear();
-  chapSeq = 0;
-  $('chapters').innerHTML = '';
-  $('logs').innerHTML = '';
-}
-
-/* ---------- 任务轮询 ---------- */
-async function poll() {
-  try {
-    const r = await fetch('/api/logs?since=' + since);
-    const d = await r.json();
-    (d.chapters || []).forEach(updateChap);
-    (d.items || []).forEach(appendLog);
-    if (d.items && d.items.length) since = d.items[d.items.length - 1].n;
-    updateStats(d.chapters || []);
-
-    const dot = $('status-dot'), txt = $('status-text'), stop = $('btnStop');
-    dot.className = 'dot';
-    if (d.status === 'running') {
-      dot.classList.add('run'); txt.textContent = '运行中';
-      stop.disabled = false; stop.title = ''; $('btnStart').disabled = true;
-    } else if (d.status === 'finished') {
-      txt.textContent = '已完成'; stop.disabled = true; stop.title = '没有正在运行的任务';
-      $('btnStart').disabled = false;
-    } else if (d.status === 'stopped') {
-      txt.textContent = '已停止'; stop.disabled = true; stop.title = '没有正在运行的任务';
-      $('btnStart').disabled = false;
-    } else if (d.status === 'error') {
-      dot.classList.add('err'); txt.textContent = '异常退出 (' + d.exit_code + ')';
-      stop.disabled = true; stop.title = '没有正在运行的任务'; $('btnStart').disabled = false;
-    } else {
-      txt.textContent = '空闲'; stop.disabled = true; stop.title = '没有正在运行的任务';
-      $('btnStart').disabled = false;
-    }
-    window.setIcon('ico-start', d.status === 'running' ? 'Pause' : 'Play');
-    pollFails = 0;
-  } catch (e) {
-    pollFails++;
-    if (pollFails >= 3) {
-      $('status-dot').className = 'dot err';
-      $('status-text').textContent = '连接中断';
-    }
-  }
-}
-
-/* ---------- 设置页动作 ---------- */
-
-$('btnCourses').onclick = async () => {
-  const box = $('courses');
-  box.innerHTML = '';
-  box.appendChild(emptyState('正在登录并拉取课程…'));
-  setMsg('');
-  try {
-    const d = await post('/api/courses', {username: $('username').value.trim(), password: $('password').value});
-    if (!d.courses.length) {
-      box.innerHTML = '';
-      box.appendChild(emptyState('账号下没有课程'));
-      return;
-    }
-    const list = document.createElement('div');
-    list.className = 'list';
-    d.courses.forEach(c => {
-      const row = document.createElement('label');
-      row.className = 'list-row';
-      row.style.cursor = 'pointer';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox'; cb.value = c.id; cb.style.margin = '0';
-      if (savedCourseIds.indexOf(String(c.id)) >= 0) cb.checked = true;
-      cb.addEventListener('change', () => {
-        const picked = document.querySelectorAll('#courses input:checked');
-        if (picked.length > 4) {
-          cb.checked = false;
-          setMsg('最多同时选择 4 门课程', 'err');
-          return;
-        }
-      });
-      const name = document.createElement('span');
-      name.className = 'name';
-      name.textContent = c.title + '（' + c.id + '）';
-      row.appendChild(cb);
-      row.appendChild(name);
-      list.appendChild(row);
-    });
-    box.innerHTML = '';
-    box.appendChild(list);
-    setMsg(d.message, 'ok');
-  } catch (e) {
-    box.innerHTML = '';
-    box.appendChild(errorState('拉取失败：' + e.message, () => $('btnCourses').click()));
-  }
-};
-
-$('btnModels').onclick = async () => {
-  setMsg('正在获取模型列表…');
-  try {
-    const d = await post('/api/models', {api_key: $('api_key').value.trim(), endpoint: $('endpoint').value.trim()});
-    const fill = (id, keepEmpty, emptyText) => {
-      const el = $(id);
-      el.innerHTML = '';
-      if (keepEmpty) {
-        const o = document.createElement('option');
-        o.value = ''; o.textContent = emptyText;
-        el.appendChild(o);
-      }
-      d.models.forEach(m => {
-        const o = document.createElement('option');
-        o.value = m; o.textContent = m;
-        el.appendChild(o);
-      });
-    };
-    fill('model', false, '');
-    fill('vision_model', true, '不使用');
-    const prefer = d.models.find(m => /deepseek-chat|qwen|gpt-4o|glm-4/i.test(m));
-    if (prefer) $('model').value = prefer;
-    setMsg('共 ' + d.models.length + ' 个模型', 'ok');
-  } catch (e) {
-    setMsg('获取失败：' + e.message, 'err');
-  }
-};
-
-$('btnTest').onclick = async () => {
-  setMsg('正在测试连接…');
-  try {
-    const d = await post('/api/test-llm', {
-      api_key: $('api_key').value.trim(),
-      endpoint: $('endpoint').value.trim(),
-      model: $('model').value
-    });
-    setMsg(d.message, 'ok');
-  } catch (e) {
-    setMsg('连接失败：' + e.message, 'err');
-  }
-};
-
-function markDirty(on) {
-  const bar = $('save-bar');
-  if (bar) bar.hidden = !on;
-}
-document.querySelectorAll('#page-settings input, #page-settings select').forEach(el => {
-  el.addEventListener('change', () => markDirty(true));
-  el.addEventListener('input', () => markDirty(true));
-});
-$('btnSaveTop').onclick = () => $('btnSave').click();
-
-$('btnSave').onclick = async () => {
-  try {
-    const d = await post('/api/config', formData());
-    setMsg(d.message, 'ok');
-    markDirty(false);
-  } catch (e) {
-    setMsg('保存失败：' + e.message, 'err');
-  }
-};
-
-$('btnStart').onclick = async () => {
-  // 课程列表为空时后端会刷全部课程，这件事必须让用户明确知道
-  const picked = document.querySelectorAll('#courses input:checked').length;
-  const typed = $('manual_ids').value.split(/[,，\s]+/).filter(Boolean).length;
-  const cfg = await fetch('/api/config').then(r => r.json()).catch(() => ({}));
-  const saved = (cfg.course_list || []).length;
-  if (!picked && !typed && !saved) {
-    if (!confirm('没有选择任何课程。继续的话会刷这个账号下的**全部课程**。\n\n确定要开始吗？')) return;
-  }
-  setMsg('正在启动…');
-  try {
-    resetView(false);
-    const d = await post('/api/start', formData());
-    setMsg('已启动，进程 ' + d.pid, 'ok');
-    switchPage('overview');
-  } catch (e) {
-    setMsg('启动失败：' + e.message, 'err');
-    // 缺配置时直接把用户送到该去的地方，而不是只丢一句报错
-    if (/请填写|请先在设置里/.test(e.message)) {
-      switchPage('settings');
-      setMsg('启动失败：' + e.message + '（已切到设置页）', 'err');
-    }
-  }
-};
-
-$('btnStop').onclick = async () => {
-  try {
-    const d = await post('/api/stop');
-    setMsg(d.message, 'ok');
-  } catch (e) {
-    setMsg('停止失败：' + e.message, 'err');
-  }
-};
-
-/* ---------- 考试 ---------- */
-async function loadExams() {
-  const box = $('exam-list');
-  box.innerHTML = '';
-  box.appendChild(emptyState('正在读取考试列表…'));
-  $('exam-hint').textContent = '';
-  try {
-    const r = await post('/api/exams', {
-      username: $('username').value.trim(),
-      password: $('password').value
-    });
-    examCourses = r.courses || [];
-    if (!examCourses.length) {
-      box.innerHTML = '';
-      box.appendChild(emptyState('没有找到已发布的考试', '课程考试发布后会出现在这里。', loadExams));
-      return;
-    }
-    $('exam-hint').textContent = '共 ' + r.total + ' 场';
-    box.innerHTML = '';
-    const list = document.createElement('div');
-    list.className = 'list';
-    examCourses.forEach(group => {
-      group.items.forEach(item => {
-        const row = document.createElement('div');
-        row.className = 'list-row';
-        const name = document.createElement('span');
-        name.className = 'name';
-        name.innerHTML = '<small></small><span></span>';
-        name.querySelector('small').textContent = group.course + ' / ';
-        name.querySelector('span').textContent = item.name;
-        const meta = document.createElement('span');
-        meta.className = 'meta';
-        meta.textContent = [item.status, item.expire].filter(Boolean).join(' · ') || '—';
-        const actions = document.createElement('span');
-        actions.className = 'actions';
-        const finished = item.status === '已完成' || item.status === '已批阅';
-        const btn = document.createElement('button');
-        btn.className = 'btn';
-        btn.textContent = finished ? '重考' : '开始';
-        btn.title = '打开考试窗口：你过验证码，程序自动答题';
-        btn.onclick = () => openExamBrowser(group, item, btn, finished ? 'retake' : 'start');
-        actions.appendChild(btn);
-        row.appendChild(name); row.appendChild(meta); row.appendChild(actions);
-        list.appendChild(row);
-      });
-    });
-    box.appendChild(list);
-  } catch (e) {
-    box.innerHTML = '';
-    box.appendChild(errorState('读取失败：' + e.message, loadExams));
-  }
-}
-
-async function openExamBrowser(group, item, btn, mode) {
-  const tip = mode === 'retake'
-    ? '重考「' + item.name + '」？\n\n会打开考试窗口，你在里面点重考并完成验证码，之后程序自动答完整套卷子并交卷。重考次数会用掉一次。'
-    : '开始「' + item.name + '」？\n\n会打开考试窗口，你在里面点进入考试并完成验证码，之后程序自动答题、自动交卷。';
-  if (!confirm(tip)) return;
-  if (btn) { btn.disabled = true; btn.textContent = '打开中…'; }
-
-  const q = new URLSearchParams({
-    redo: 1, taskrefId: item.exam_id, courseId: group.courseId,
-    classId: group.clazzId, role: '', source: 0,
-    enc_task: item.enc_task || '', cpi: group.cpi, vx: 0, examsignal: 1
-  });
-  const url = 'https://mooc1.chaoxing.com/exam-ans/exam/phone/task-exam?' + q.toString();
-  try {
-    await post('/api/exam/browser', {url});
-    setMsg('考试窗口已打开：在里面点「进入考试」并完成验证码，程序会自动接手', 'warn');
-    $('exam-hint').textContent = '等待你在考试窗口里进入考场…';
-    $('app').classList.remove('nologs');
-    watchExamBrowser(group, item, btn);
-  } catch (e) {
-    alert('打开考试窗口失败：' + e.message);
-    if (btn) { btn.disabled = false; btn.textContent = '开始'; }
-  }
-}
-
-function watchExamBrowser(group, item, btn) {
-  if (examTimer) clearInterval(examTimer);
-  let ticks = 0;
-  examTimer = setInterval(async () => {
-    ticks++;
-    if (ticks > 420) {
-      clearInterval(examTimer); examTimer = null;
-      $('exam-hint').textContent = '等待超时，未检测到进入考场';
-      return;
-    }
-    try {
-      const r = await fetch('/api/exam/browser');
-      const d = await r.json();
-      if (!d.enc) return;
-      clearInterval(examTimer); examTimer = null;
-      $('exam-hint').textContent = '已进入考场，开始自动答题…';
-      setMsg('已接手考试，正在答题', 'ok');
-      await post('/api/exam/autodrive', {});
-      startExamPolling();
-    } catch (e) {}
-  }, 1000);
-}
-
-function startExamPolling() {
-  if (examTimer) clearInterval(examTimer);
-  examTimer = setInterval(async () => {
-    try {
-      const r = await fetch('/api/exam/status');
-      const d = await r.json();
-      $('face-card').hidden = d.status !== 'waiting_face';
-      if (d.status === 'running') $('exam-hint').textContent = '答题中，已提交 ' + d.answered + ' 题';
-      if (d.status === 'done') {
-        clearInterval(examTimer); examTimer = null;
-        if (d.submitted) {
-          $('exam-hint').textContent = '已交卷，共提交 ' + d.answered + ' 题';
-          setMsg('考试已交卷', 'ok');
-        } else {
-          $('exam-hint').textContent = '未交卷，已作答 ' + d.answered + ' 题，请到平台手动完成并提交';
-          setMsg('考试未交卷，需要你手动处理', 'warn');
-        }
-        setTimeout(loadExams, 800);
-      }
-      if (d.status === 'error') {
-        clearInterval(examTimer); examTimer = null;
-        $('exam-hint').textContent = '已中断';
-        setMsg('考试中断：' + d.error, 'err');
-        setTimeout(loadExams, 800);
-      }
-    } catch (e) {}
-  }, 1500);
-}
-
-$('about-kuan').onclick = async () => {
-  try {
-    await navigator.clipboard.writeText('30432128');
-    setMsg('酷安号已复制', 'ok');
-  } catch (e) {
-    setMsg('复制失败，酷安号是 30432128', 'warn');
-  }
-};
-$('btnFeedback').onclick = () => {
-  $('feedback-dialog').showModal();
-};
-$('feedback-cancel').onclick = () => $('feedback-dialog').close();
-$('feedback-send').onclick = async () => {
-  const text = $('feedback-text').value.trim();
-  if (!text) { setMsg('先写点内容再发', 'err'); return; }
-  const btn = $('feedback-send');
-  btn.disabled = true;
-  btn.textContent = '发送中…';
-  let context = '版本 ' + $('ver-current').textContent;
-  if ($('feedback-logs').checked) {
-    const lines = Array.from($('logs').children).slice(-100)
-      .map(el => el.textContent);
-    if (lines.length) context += '\n\n--- 最近日志 ---\n' + lines.join('\n');
-  }
-  try {
-    const r = await post('/api/feedback/push', {
-      kind: 'feedback', module: 'ui', message: text, context: context
-    });
-    $('feedback-dialog').close();
-    $('feedback-text').value = '';
-    setMsg(r.message || '已发送', 'ok');
-    window.setIcon('ico-fb', 'Check');
-    setTimeout(() => window.setIcon('ico-fb', 'Message'), 2200);
-  } catch (e) {
-    setMsg('发送失败：' + e.message, 'err');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '发送';
-  }
-};
-
-$('btnExamRefresh').onclick = loadExams;
-$('btnFaceDone').onclick = async () => {
-  try {
-    await post('/api/exam/face_done', {});
-    $('face-card').hidden = true;
-  } catch (e) {
-    alert('提交失败：' + e.message);
-  }
-};
-
-/* ---------- 题库 ---------- */
-async function loadLibrary() {
-  const box = $('lib-list');
-  box.innerHTML = '';
-  box.appendChild(emptyState('正在读取…'));
-  try {
-    const kw = $('lib-search').value.trim();
-    const r = await fetch('/api/library?q=' + encodeURIComponent(kw));
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || '读取失败');
-    $('lib-total').textContent = d.stats.total;
-    $('lib-confirmed').textContent = d.stats.confirmed;
-    $('lib-pending').textContent = d.stats.pending;
-    $('lib-wrong').textContent = d.stats.wrong;
-
-    box.innerHTML = '';
-    if (!d.items.length) {
-      box.appendChild(emptyState('还没有题目', '跑一次带章节测验的任务后，答过的题会出现在这里。'));
-      return;
-    }
-    const list = document.createElement('div');
-    list.className = 'list';
-    const statusMap = {0: '待验证', 1: '已确认', 2: '已判错'};
-    // 答案的可信依据：用户一眼就能看出哪些能信、哪些只是模型猜的
-    const evidenceMap = {
-      platform: '平台判分', quiz: '整卷满分', ai_agree: '双答一致',
-      shared: '共享库', manual: '手工确认', conflict: '答案冲突',
-      manual_wrong: '手工标错', platform_wrong: '平台判错', model: '仅模型猜测'
-    };
-    d.items.forEach(it => {
-      const row = document.createElement('div');
-      row.className = 'list-row';
-      const name = document.createElement('span');
-      name.className = 'name';
-      name.innerHTML = '<small></small><span></span>';
-      const tag = [statusMap[it.status] || ''];
-      if (it.evidence && evidenceMap[it.evidence]) tag.push(evidenceMap[it.evidence]);
-      name.querySelector('small').textContent = tag.filter(Boolean).join(' · ');
-      name.querySelector('span').textContent = it.title.slice(0, 60);
-      const meta = document.createElement('span');
-      meta.className = 'meta';
-      meta.textContent = '答案：' + (it.answer || '—');
-      const actions = document.createElement('span');
-      actions.className = 'actions';
-
-      const mkBtn = (text, handler, cls) => {
-        const b = document.createElement('button');
-        b.className = cls || 'btn text';
-        b.textContent = text;
-        b.onclick = handler;
-        actions.appendChild(b);
-        return b;
-      };
-
-      if (it.status !== 1) {
-        mkBtn('确认', async () => {
-          try {
-            await post('/api/library/confirm', {fingerprint: it.fingerprint});
-            loadLibrary();
-          } catch (err) { setMsg('确认失败：' + err.message, 'err'); }
-        });
-      }
-      if (it.status !== 2) {
-        mkBtn('标错', async () => {
-          try {
-            await post('/api/library/reject', {fingerprint: it.fingerprint});
-            loadLibrary();
-          } catch (err) { setMsg('标记失败：' + err.message, 'err'); }
-        });
-      }
-      mkBtn('删除', async () => {
-        if (!confirm('删除这道题？')) return;
-        try {
-          await post('/api/library/delete', {fingerprint: it.fingerprint});
-          loadLibrary();
-        } catch (err) { setMsg('删除失败：' + err.message, 'err'); }
-      });
-
-      row.appendChild(name); row.appendChild(meta); row.appendChild(actions);
-      list.appendChild(row);
-    });
-    box.appendChild(list);
-  } catch (e) {
-    box.innerHTML = '';
-    box.appendChild(errorState('读取失败：' + e.message, loadLibrary));
-  }
-}
-
-async function loadRemoteLibrary() {
-  const box = $('remote-list');
-  box.innerHTML = '';
-  box.appendChild(emptyState('正在读取服务器题库…'));
-  try {
-    const kw = $('remote-search').value.trim();
-    const r = await fetch('/api/library/remote?q=' + encodeURIComponent(kw));
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || '服务器题库暂不可用');
-    $('remote-count').textContent = ' · 共 ' + d.total + ' 题';
-    box.innerHTML = '';
-    if (!d.items.length) {
-      box.appendChild(emptyState('服务器题库还没有题目'));
-      return;
-    }
-    const list = document.createElement('div');
-    list.className = 'list';
-    const statusMap = {0: '有争议', 1: '已收录'};
-    d.items.forEach(it => {
-      const row = document.createElement('div');
-      row.className = 'list-row';
-      const name = document.createElement('span');
-      name.className = 'name';
-      name.innerHTML = '<small></small><span></span>';
-      name.querySelector('small').textContent = (statusMap[it.status] || '') +
-        (it.votes ? ' ' + it.votes + ' 票' : '');
-      name.querySelector('span').textContent = (it.title || '').slice(0, 60);
-      const meta = document.createElement('span');
-      meta.className = 'meta';
-      meta.textContent = '答案：' + (it.answer || '—');
-      row.appendChild(name); row.appendChild(meta);
-      list.appendChild(row);
-    });
-    box.appendChild(list);
-  } catch (e) {
-    box.innerHTML = '';
-    box.appendChild(errorState('读取失败：' + e.message, loadRemoteLibrary));
-  }
-}
-
-$('btnLibRefresh').onclick = loadLibrary;
-$('lib-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadLibrary(); });
-$('btnRemoteRefresh').onclick = loadRemoteLibrary;
-$('remote-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadRemoteLibrary(); });
-$('remote-lib').addEventListener('toggle', e => { if (e.target.open) loadRemoteLibrary(); });
-
-/* ---------- 自动更新 ---------- */
-function fillList(el, items) {
-  el.innerHTML = '';
-  items.forEach(text => {
-    const li = document.createElement('li');
-    li.textContent = text;
-    el.appendChild(li);
-  });
-}
-
-async function syncUpdateState() {
-  try {
-    const d = await fetch('/api/update/progress').then(r => r.json());
-    if (d.stage && d.stage !== 'idle') {
-      renderUpdateProgress(d);
-      if (['downloading', 'verifying', 'preparing', 'restarting'].includes(d.stage)) {
-        startUpdatePolling();
-      }
-    }
-  } catch (e) {}
-}
-
-function showUpdateDialog(d) {
-  pendingUpdate = d;
-  const beta = !!d.beta;
-  $('update-title').textContent = '发现新版本 ' + d.version + (beta ? '（Beta）' : '');
-  $('update-sub').textContent = '当前 ' + d.current + ' → ' + d.version
-    + (d.notes ? '　' + d.notes : '');
-
-  const list = (d.highlights && d.highlights.length) ? d.highlights.slice() : [d.notes || '细节修复与优化'];
-  fillList($('update-list'), list);
-  if (beta) {
-    // Beta 必须在更新公告里说清楚，不能让人以为是正式版
-    const warn = document.createElement('li');
-    warn.className = 'upd-beta';
-    warn.textContent = '这是 Beta 版，可能有不可控的 bug。正在跑课或考试的话，建议先点「稍后」，等正式版。';
-    $('update-list').insertBefore(warn, $('update-list').firstChild);
-  }
-  if ($('update-dialog').open) return;
-  $('update-dialog').showModal();
-  syncUpdateState();
-}
-
-let updateTimer = null;
-
-let updateStage = 'idle';
-
-function renderUpdateProgress(d) {
-  updateStage = d.stage || 'idle';
-  const box = $('upd-progress');
-  if (box) box.hidden = false;
-  const fill = $('upd-bar-fill');
-  if (fill) fill.style.width = Math.max(0, Math.min(100, d.percent || 0)) + '%';
-  const stageEl = $('upd-stage');
-  if (stageEl) {
-    stageEl.textContent = d.message || d.stage || '';
-    stageEl.classList.toggle('err', d.stage === 'error');
-    if (d.stage === 'error' && d.error) stageEl.textContent = '更新失败：' + d.error;
-  }
-
-  // 按钮跟着阶段走：下载完不是自动重启，而是换成「立即重启」等用户点
-  const go = $('update-go'), later = $('update-later');
-  if (!go || !later) return;
-  if (d.stage === 'ready') {
-    go.disabled = false; go.textContent = '立即重启';
-    later.disabled = false; later.textContent = '稍后';
-    stopUpdatePolling();
-  } else if (d.stage === 'preparing') {
-    go.disabled = true; go.textContent = '正在准备…';
-    later.disabled = true;
-  } else if (d.stage === 'restarting') {
-    go.disabled = true; go.textContent = '正在重启…';
-    later.disabled = true;
-  } else if (d.stage === 'done') {
-    go.disabled = true; go.textContent = '已完成';
-    later.disabled = true;
-  } else if (d.stage === 'error') {
-    go.disabled = false; go.textContent = '重试';
-    later.disabled = false; later.textContent = '稍后';
-  }
-}
-
-function stopUpdatePolling() {
-  if (updateTimer) { clearInterval(updateTimer); updateTimer = null; }
-}
-
-function startUpdatePolling() {
-  stopUpdatePolling();
-  updateTimer = setInterval(async () => {
-    try {
-      const d = await fetch('/api/update/progress').then(r => r.json());
-      renderUpdateProgress(d);
-      // 这几种阶段不会再变化，停掉轮询
-      if (['ready', 'error', 'restarting', 'done'].includes(d.stage)) {
-        stopUpdatePolling();
-      }
-    } catch (e) {}
-  }, 600);
-}
-
-async function applyUpdate(source) {
-  if (!pendingUpdate) return;
-  const btn = $(source);
-  const label = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '下载中…';
-  $('update-later').disabled = true;
-  renderUpdateProgress({stage: 'downloading', percent: 0, message: '正在连接下载服务器'});
-  try {
-    await post('/api/update/apply', {
-      url: pendingUpdate.url,
-      sha256: pendingUpdate.sha256,
-      version: pendingUpdate.version
-    });
-    startUpdatePolling();
-  } catch (e) {
-    renderUpdateProgress({stage: 'error', percent: 0, error: e.message});
-    btn.disabled = false;
-    btn.textContent = label;
-    $('update-later').disabled = false;
-  }
-}
-
-/* 界面报错必须看得见：以前回调里 catch 完直接吞掉，
-   按钮「点不动」却没有任何提示，只能靠猜 */
-function reportClientError(text) {
-  try { console.error(text); } catch (e) {}
-  if (!$('update-dialog') || !$('update-dialog').open) return;
-  const box = $('upd-progress'), el = $('upd-stage');
-  if (!box || !el) return;
-  box.hidden = false;
-  el.classList.add('err');
-  el.textContent = '界面出错：' + text;
-}
-
-window.addEventListener('error', ev => reportClientError(ev.message || '未知错误'));
-window.addEventListener('unhandledrejection', ev => {
-  const r = ev.reason;
-  reportClientError((r && r.message) ? r.message : String(r));
-});
-
-async function restartUpdate(source) {
-  const btn = $(source);
-  const label = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '正在准备…'; }
-  // 解压这一步在程序还开着的时候做，进度会实时显示，解完才退出
-  renderUpdateProgress({stage: 'preparing', percent: 0,
-    message: '正在解压更新包，大约十几秒'});
-  startUpdatePolling();
-  try {
-    await post('/api/update/restart', {});
-  } catch (e) {
-    renderUpdateProgress({stage: 'error', percent: 0, error: e.message});
-    if (btn) { btn.disabled = false; btn.textContent = label; }
-    stopUpdatePolling();
-  }
-}
-
-async function checkUpdateSilently() {
-  try {
-    const r = await fetch('/api/update/check');
-    const d = await r.json();
-
-    if (d.current) $('ver-current').textContent = d.current;
-    if (d.current_changelog && d.current_changelog.length && !$('ver-changelog').children.length) {
-      fillList($('ver-changelog'), d.current_changelog);
-    }
-
-    if (d.last_failure) {
-      $('update-text').textContent = '上次更新没有完成，已保留当前版本';
-      $('update-bar').classList.add('warn');
-      $('update-bar').hidden = false;
-      $('update-now').hidden = true;
-      $('update-close').textContent = '知道了';
-      return;
-    }
-    if (!d.ok || !d.has_update) return;
-
-    pendingUpdate = d;
-    $('update-text').textContent = '发现新版本 ' + d.version;
-    $('update-bar').hidden = false;
-
-    // 每次打开程序都弹一次，让用户第一时间知道有更新
-    showUpdateDialog(d);
-  } catch (e) {}
-}
-
-$('update-close').onclick = () => { $('update-bar').hidden = true; };
-$('update-now').onclick = () => applyUpdate('update-now');
-$('update-go').onclick = async () => {
-  // 不听前端变量：黑屏或初始化未完成时它可能是旧值，
-  // 会导致「已经下载好了却又下了一遍」。直接问后端现在到底什么状态。
-  let d;
-  try {
-    d = await fetch('/api/update/progress').then(r => r.json());
-  } catch (e) {
-    renderUpdateProgress({stage: 'error', percent: 0, error: '读取更新状态失败：' + e.message});
-    return;
-  }
-  renderUpdateProgress(d);
-  if (d.stage === 'ready') { restartUpdate('update-go'); return; }
-  if (['downloading', 'verifying', 'preparing', 'restarting'].includes(d.stage)) {
-    // 已经在跑了，接着显示进度就行，别重复触发
-    startUpdatePolling();
-    return;
-  }
-  applyUpdate('update-go');
-};
-$('update-later').onclick = () => { $('update-dialog').close(); };
-$('update-dialog').addEventListener('cancel', () => { $('update-dialog').close(); });
-$('btnCheckUpdate').onclick = async () => {
-  $('update-info').textContent = '正在检查更新…';
-  try {
-    const r = await fetch('/api/update/check');
-    const d = await r.json();
-    if (d.current) $('ver-current').textContent = d.current;
-    if (d.current_changelog) fillList($('ver-changelog'), d.current_changelog);
-    if (!d.ok) { $('update-info').textContent = d.error || '检查失败'; return; }
-    if (!d.has_update) { $('update-info').textContent = '已是最新版本'; return; }
-    $('update-info').textContent = '发现新版本 ' + d.version;
-    showUpdateDialog(d);
-  } catch (e) {
-    $('update-info').textContent = '检查失败：' + e.message;
-  }
-};
-
-/* ---------- 快捷键 ---------- */
-document.addEventListener('keydown', e => {
-  const ctrl = e.ctrlKey || e.metaKey;
-  if (ctrl && e.key === 'Enter') { e.preventDefault(); if (!$('btnStart').disabled) $('btnStart').click(); }
-  if (ctrl && e.key.toLowerCase() === 's') { e.preventDefault(); $('btnSave').click(); }
-  if (ctrl && ['1','2','3','4','5'].includes(e.key)) {
-    e.preventDefault();
-    switchPage(['overview','exams','library','settings','about'][Number(e.key) - 1]);
-  }
-  if (e.key === 'Escape') $('app').classList.add('nologs');
-});
-
-/* ---------- 初始化 ---------- */
-(async function init() {
-  try {
-    const r = await fetch('/api/config');
-    const c = await r.json();
-    if (c.username) { $('username').value = c.username; $('nav-account').textContent = c.username; }
-    if (c.speed) $('speed').value = c.speed;
-    if (c.jobs) $('jobs').value = c.jobs;
-    if (c.endpoint) $('endpoint').value = c.endpoint;
-    if (c.notopen_action) $('notopen_action').value = c.notopen_action;
-    if (c.min_interval !== undefined) $('min_interval').value = c.min_interval;
-    if (c.target_accuracy !== undefined) {
-      $('target_accuracy').value = c.target_accuracy;
-      $('acc-val').textContent = Math.round(c.target_accuracy) + '%';
-    }
-    if (c.exam_answer_gap !== undefined) $('exam_answer_gap').value = c.exam_answer_gap;
-    if (c.exam_min_minutes !== undefined) $('exam_min_minutes').value = c.exam_min_minutes;
-    if (c.exam_hold_seconds !== undefined) $('exam_hold_seconds').value = c.exam_hold_seconds;
-    if (c.reasoning_effort) $('reasoning_effort').value = c.reasoning_effort;
-    $('submit').checked = c.submit !== false;
-    $('work_redo_enabled').checked = !!c.work_redo_enabled;
-    if (c.model) {
-      const o = document.createElement('option');
-      o.value = c.model; o.textContent = c.model;
-      $('model').innerHTML = ''; $('model').appendChild(o);
-    }
-    if (c.vision_model) {
-      const o = document.createElement('option');
-      o.value = c.vision_model; o.textContent = c.vision_model;
-      $('vision_model').appendChild(o);
-      $('vision_model').value = c.vision_model;
-    }
-    savedCourseIds = (c.course_list || []).map(String);
-    if (c.has_key) $('api_key').placeholder = '已保存（尾号 ' + c.api_key_tail + '），留空沿用';
-    if (c.password_saved) $('password').placeholder = '已保存，留空沿用';
-    if (c.version) {
-      $('ver-current').textContent = c.version;
-      $('nav-version').textContent = 'v' + c.version;
-      const aboutVer = $('about-version');
-      if (aboutVer) aboutVer.textContent = 'v' + c.version;
-    }
-    $('nav-account').textContent = c.username || '未配置账号';
-  } catch (e) {}
-
-  poll();
-  setInterval(poll, 1000);
-  // 上次关程序时可能已经下载好更新包，启动就把它摆出来
-  syncUpdateState();
-  setTimeout(checkUpdateSilently, 3000);
-  setInterval(checkUpdateSilently, 6 * 3600 * 1000);
-})();
-</script>
+  <script src="/static/app-base.js"></script>
+  <script src="/static/app-core.js"></script>
+  <script src="/static/app-tour.js"></script>
+  <script src="/static/app-logs.js"></script>
+  <script src="/static/app-settings.js"></script>
+  <script src="/static/app-exam.js"></script>
+  <script src="/static/app-agent.js"></script>
+  <script src="/static/app-library.js"></script>
+  <script src="/static/app-misc.js"></script>
+  <script src="/static/app-boot.js"></script>
 <script type="module" src="/static/app-icons.js"></script>
 </body>
 </html>

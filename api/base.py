@@ -1203,6 +1203,11 @@ class Chaoxing:
             _ORIGIN_HTML_CONTENT = final_resp.text  # 用于配合输出网页源码, 帮助修复#391错误
 
             # 2. 设置上一轮错误反馈（供AI重新作答时参考）
+            if hasattr(self.tiku, 'set_course_name'):
+                try:
+                    self.tiku.set_course_name(_course.get("title", ""))
+                except Exception as e:
+                    logger.debug(f"设置课程名失败: {e}")
             if feedback_history and hasattr(self.tiku, 'set_work_feedback'):
                 try:
                     self.tiku.set_work_feedback(feedback_history)

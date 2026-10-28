@@ -1,149 +1,106 @@
-/**
- * 界面图标数据（24×24 线性风格，全部用 <path> 表达，方便做形变动画）。
+/** 图标数据取自 lucide-static（24×24 网格，统一留白），不再手写路径——
+ *  手写坐标对不齐，小尺寸下边缘会显得毛糙。
  *
- * 形状尽量保持"可形变"：两端路径数差太多时 morphicons 会自己拆分补齐，
- * 但同数量、同方向的形状过渡最自然。
+ *  除了成对的常态/选中态，还准备了 Loader / Success / Failed 这组反馈图标：
+ *  任何按钮点下去都能形变过去，操作完再变回来。
  */
 
-export const Grid = [
-  ["path", { d: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" }],
-];
+export const Grid = [["rect",{"width":"7","height":"7","x":"3","y":"3","rx":"1"}],["rect",{"width":"7","height":"7","x":"14","y":"3","rx":"1"}],["rect",{"width":"7","height":"7","x":"14","y":"14","rx":"1"}],["rect",{"width":"7","height":"7","x":"3","y":"14","rx":"1"}]];
 
-export const Exam = [
-  ["path", { d: "M4 5h16v14H4z" }],
-  ["path", { d: "M8 12l3 3 5-6" }],
-];
+export const GridOn = [["rect",{"width":"7","height":"9","x":"3","y":"3","rx":"1"}],["rect",{"width":"7","height":"5","x":"14","y":"3","rx":"1"}],["rect",{"width":"7","height":"9","x":"14","y":"12","rx":"1"}],["rect",{"width":"7","height":"5","x":"3","y":"16","rx":"1"}]];
 
-export const Library = [
-  ["path", { d: "M5 5h5v14H5z" }],
-  ["path", { d: "M13 5h6v14h-6z" }],
-];
+export const Exam = [["rect",{"width":"8","height":"4","x":"8","y":"2","rx":"1","ry":"1"}],["path",{"d":"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"}],["path",{"d":"M12 11h4"}],["path",{"d":"M12 16h4"}],["path",{"d":"M8 11h.01"}],["path",{"d":"M8 16h.01"}]];
 
-export const Sliders = [
-  ["path", { d: "M4 7h3M4 17h7" }],
-  ["path", { d: "M11 7h9M15 17h5" }],
-  ["path", { d: "M9 5v4M13 15v4" }],
-];
+export const ExamOn = [["rect",{"width":"8","height":"4","x":"8","y":"2","rx":"1","ry":"1"}],["path",{"d":"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"}],["path",{"d":"m9 14 2 2 4-4"}]];
 
-export const Play = [
-  ["path", { d: "M8 5v14l11-7z" }],
-];
+export const Library = [["path",{"d":"M12 5v16"}],["path",{"d":"M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z"}]];
 
-// 两根"竖条"要有面积：零宽度的直线没法做区域形变，morphTo 会直接失败
-export const Pause = [
-  ["path", { d: "M8 5h3v14H8z" }],
-  ["path", { d: "M14 5h3v14h-3z" }],
-];
+export const LibraryOn = [["path",{"d":"m16 6 4 14"}],["path",{"d":"M12 6v14"}],["path",{"d":"M8 8v12"}],["path",{"d":"M4 4v16"}]];
 
-export const Stop = [
-  ["path", { d: "M6 6h12v12H6z" }],
-];
+export const Sliders = [["path",{"d":"M10 5H3"}],["path",{"d":"M12 19H3"}],["path",{"d":"M14 3v4"}],["path",{"d":"M16 17v4"}],["path",{"d":"M21 12h-9"}],["path",{"d":"M21 19h-5"}],["path",{"d":"M21 5h-7"}],["path",{"d":"M8 10v4"}],["path",{"d":"M8 12H3"}]];
 
-/** 日志：面板 + 指向面板内的箭头；展开后箭头翻到另一边 */
-export const PanelLeft = [
-  ["path", { d: "M4 5h16v14H4z" }],
-  ["path", { d: "M14 5v14" }],
-  ["path", { d: "M11 9l-3 3 3 3" }],
-];
+export const SlidersOn = [["path",{"d":"M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"}],["circle",{"cx":"12","cy":"12","r":"3"}]];
 
-export const PanelRight = [
-  ["path", { d: "M4 5h16v14H4z" }],
-  ["path", { d: "M14 5v14" }],
-  ["path", { d: "M7 9l3 3-3 3" }],
-];
+export const Info = [["circle",{"cx":"12","cy":"12","r":"10"}],["path",{"d":"M12 16v-4"}],["path",{"d":"M12 8h.01"}]];
 
-export const Message = [
-  ["path", { d: "M4 5h16v11H9l-5 4z" }],
-];
+export const InfoOn = [["circle",{"cx":"12","cy":"12","r":"10"}],["path",{"d":"M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"}],["path",{"d":"M12 17h.01"}]];
 
-export const Check = [
-  ["path", { d: "M5 13l4 4L19 7" }],
-];
+export const Play = [["path",{"d":"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"}]];
 
-export const Download = [
-  ["path", { d: "M12 4v10" }],
-  ["path", { d: "M8 11l4 4 4-4" }],
-  ["path", { d: "M5 19h14" }],
-];
+export const Pause = [["rect",{"x":"14","y":"3","width":"5","height":"18","rx":"1"}],["rect",{"x":"5","y":"3","width":"5","height":"18","rx":"1"}]];
 
-export const Refresh = [
-  ["path", { d: "M20 12a8 8 0 1 1-2.4-5.7" }],
-  ["path", { d: "M20 4v5h-5" }],
-];
+export const Stop = [["rect",{"width":"18","height":"18","x":"3","y":"3","rx":"2"}]];
 
-export const ArrowRight = [
-  ["path", { d: "M5 12h13" }],
-  ["path", { d: "M13 6l6 6-6 6" }],
-];
+export const PanelLeft = [["rect",{"width":"18","height":"18","x":"3","y":"3","rx":"2"}],["path",{"d":"M9 3v18"}]];
 
-export const ArrowLeft = [
-  ["path", { d: "M19 12H6" }],
-  ["path", { d: "M11 6l-6 6 6 6" }],
-];
+export const PanelRight = [["rect",{"width":"18","height":"18","x":"3","y":"3","rx":"2"}],["path",{"d":"M15 3v18"}]];
 
-export const Close = [
-  ["path", { d: "M6 6l12 12" }],
-  ["path", { d: "M18 6L6 18" }],
-];
+export const Message = [["path",{"d":"M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"}]];
 
-export const Sparkle = [
-  ["path", { d: "M12 4l1.7 4.3L18 10l-4.3 1.7L12 16l-1.7-4.3L6 10l4.3-1.7z" }],
-];
+export const Check = [["path",{"d":"M20 6 9 17l-5-5"}]];
 
-export const Key = [
-  ["path", { d: "M9 8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" }],
-  ["path", { d: "M12 11h8" }],
-  ["path", { d: "M17 11v3M20 11v2" }],
-];
+export const Close = [["path",{"d":"M18 6 6 18"}],["path",{"d":"m6 6 12 12"}]];
 
-export const Monitor = [
-  ["path", { d: "M4 5h16v11H4z" }],
-  ["path", { d: "M9 20h6M12 16v4" }],
-];
+export const Refresh = [["path",{"d":"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"}],["path",{"d":"M21 3v5h-5"}],["path",{"d":"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"}],["path",{"d":"M8 16H3v5"}]];
 
-export const Database = [
-  ["path", { d: "M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z" }],
-  ["path", { d: "M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7" }],
-];
+export const RotateCw = [["path",{"d":"M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"}],["path",{"d":"M21 3v5h-5"}]];
 
-export const Shield = [
-  ["path", { d: "M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6z" }],
-];
+export const Loader = [["path",{"d":"M21 12a9 9 0 1 1-6.219-8.56"}]];
 
-/* ---------- 导航图标：常态 / 强调态成对，子路径数量保持一致 ---------- */
+export const Success = [["circle",{"cx":"12","cy":"12","r":"10"}],["path",{"d":"m16 9-5.5 5.5L8 12"}]];
 
-/** 四格：强调态每格往角上收紧，看起来像被点亮 */
-export const GridOn = [
-  ["path", { d: "M4 4h4.5v4.5H4zM15.5 4H20v4.5h-4.5zM4 15.5h4.5V20H4zM15.5 15.5H20V20h-4.5z" }],
-];
+export const Failed = [["circle",{"cx":"12","cy":"12","r":"10"}],["path",{"d":"m15 9-6 6"}],["path",{"d":"m9 9 6 6"}]];
 
-/** 试卷：框不动，对勾变长 */
-export const ExamOn = [
-  ["path", { d: "M4 5h16v14H4z" }],
-  ["path", { d: "M6 12l4 4 8-9" }],
-];
+export const Warn = [["path",{"d":"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"}],["path",{"d":"M12 9v4"}],["path",{"d":"M12 17h.01"}]];
 
-/** 题库：第一本被抽出一截 */
-export const LibraryOn = [
-  ["path", { d: "M5 8h5v11H5z" }],
-  ["path", { d: "M13 5h6v14h-6z" }],
-];
+export const Alert = [["circle",{"cx":"12","cy":"12","r":"10"}],["line",{"x1":"12","x2":"12","y1":"8","y2":"12"}],["line",{"x1":"12","x2":"12.01","y1":"16","y2":"16"}]];
 
-/** 滑块：旋钮左右移动 */
-export const SlidersOn = [
-  ["path", { d: "M4 7h8M4 17h2" }],
-  ["path", { d: "M16 7h4M10 17h10" }],
-  ["path", { d: "M14 5v4M8 15v4" }],
-];
+export const Download = [["path",{"d":"M12 15V3"}],["path",{"d":"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"}],["path",{"d":"m7 10 5 5 5-5"}]];
 
-export const Info = [
-  ["path", { d: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" }],
-  ["path", { d: "M12 11v5" }],
-  ["path", { d: "M12 8h.01" }],
-];
+export const Upload = [["path",{"d":"M12 3v12"}],["path",{"d":"m17 8-5-5-5 5"}],["path",{"d":"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"}]];
 
-export const InfoOn = [
-  ["path", { d: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" }],
-  ["path", { d: "M12 10v6" }],
-  ["path", { d: "M12 7.2h.01" }],
-];
+export const Save = [["path",{"d":"M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"}],["path",{"d":"M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"}],["path",{"d":"M7 3v4a1 1 0 0 0 1 1h7"}]];
+
+export const Trash = [["path",{"d":"M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21"}],["path",{"d":"m5.082 11.09 8.828 8.828"}]];
+
+export const Search = [["path",{"d":"m21 21-4.34-4.34"}],["circle",{"cx":"11","cy":"11","r":"8"}]];
+
+export const Edit = [["path",{"d":"M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"}],["path",{"d":"M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"}]];
+
+export const Sparkle = [["path",{"d":"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"}],["path",{"d":"M20 2v4"}],["path",{"d":"M22 4h-4"}],["circle",{"cx":"4","cy":"20","r":"2"}]];
+
+export const Key = [["path",{"d":"m2 21 9.6-9.6"}],["path",{"d":"m7.5 15.5 2.3 2.3a1 1 0 0 1 0 1.4l-2.1 2.1a1 1 0 0 1-1.4 0L4 19"}],["circle",{"cx":"15.5","cy":"7.5","r":"5.5"}]];
+
+export const Monitor = [["rect",{"width":"20","height":"14","x":"2","y":"3","rx":"2"}],["line",{"x1":"8","x2":"16","y1":"21","y2":"21"}],["line",{"x1":"12","x2":"12","y1":"17","y2":"21"}]];
+
+export const Database = [["ellipse",{"cx":"12","cy":"5","rx":"9","ry":"3"}],["path",{"d":"M3 5V19A9 3 0 0 0 21 19V5"}],["path",{"d":"M3 12A9 3 0 0 0 21 12"}]];
+
+export const Shield = [["path",{"d":"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"}],["path",{"d":"m9 12 2 2 4-4"}]];
+
+export const Wifi = [["path",{"d":"M12 20h.01"}],["path",{"d":"M2 8.82a15 15 0 0 1 20 0"}],["path",{"d":"M5 12.859a10 10 0 0 1 14 0"}],["path",{"d":"M8.5 16.429a5 5 0 0 1 7 0"}]];
+
+export const Plug = [["path",{"d":"M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z"}],["path",{"d":"m2 22 3-3"}],["path",{"d":"M7.5 13.5 10 11"}],["path",{"d":"M10.5 16.5 13 14"}],["path",{"d":"m18 3-4 4h6l-4 4"}]];
+
+export const Stethoscope = [["path",{"d":"M11 2v2"}],["path",{"d":"M5 2v2"}],["path",{"d":"M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1"}],["path",{"d":"M8 15a6 6 0 0 0 12 0v-3"}],["circle",{"cx":"20","cy":"10","r":"2"}]];
+
+export const Activity = [["path",{"d":"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"}]];
+
+export const ListChecks = [["path",{"d":"M13 5h8"}],["path",{"d":"M13 12h8"}],["path",{"d":"M13 19h8"}],["path",{"d":"m3 17 2 2 4-4"}],["path",{"d":"m3 7 2 2 4-4"}]];
+
+export const BookCheck = [["path",{"d":"M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"}],["path",{"d":"m9 9.5 2 2 4-4"}]];
+
+export const Clock = [["circle",{"cx":"12","cy":"12","r":"10"}],["path",{"d":"M12 6v6l4 2"}]];
+
+export const Zap = [["path",{"d":"M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"}]];
+
+export const Scale = [["path",{"d":"M12 3v18"}],["path",{"d":"m19 8 3 8a5 5 0 0 1-6 0zV7"}],["path",{"d":"M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1"}],["path",{"d":"m5 8 3 8a5 5 0 0 1-6 0zV7"}],["path",{"d":"M7 21h10"}]];
+
+export const ArrowRight = [["path",{"d":"M5 12h14"}],["path",{"d":"m12 5 7 7-7 7"}]];
+
+export const ArrowLeft = [["path",{"d":"m12 19-7-7 7-7"}],["path",{"d":"M19 12H5"}]];
+
+export const ArrowUpRight = [["path",{"d":"M7 7h10v10"}],["path",{"d":"M7 17 17 7"}]];
+
+export const FolderSync = [["path",{"d":"M9 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v.5"}],["path",{"d":"M12 10v4h4"}],["path",{"d":"m12 14 1.535-1.605a5 5 0 0 1 8 1.5"}],["path",{"d":"M22 22v-4h-4"}],["path",{"d":"m22 18-1.535 1.605a5 5 0 0 1-8-1.5"}]];
+
+export const ScanSearch = [["path",{"d":"M3 7V5a2 2 0 0 1 2-2h2"}],["path",{"d":"M17 3h2a2 2 0 0 1 2 2v2"}],["path",{"d":"M21 17v2a2 2 0 0 1-2 2h-2"}],["path",{"d":"M7 21H5a2 2 0 0 1-2-2v-2"}],["circle",{"cx":"12","cy":"12","r":"3"}],["path",{"d":"m16 16-1.9-1.9"}]];

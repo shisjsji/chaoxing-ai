@@ -13,7 +13,7 @@ import random
 import re
 import time
 
-from api.exam import ExamQuestion, ask_ai, ask_with_check, exam_pace
+from api.exam import ExamQuestion, ask_ai, ask_with_check, exam_pace, set_course_name
 
 TYPE_MAP_CN = {"单选题": "single", "多选题": "multiple", "判断题": "judgement",
                "填空题": "completion", "简答题": "shortanswer",
@@ -641,13 +641,18 @@ def submit_paper(win, log=print) -> bool:
     return False
 
 
-def run_pass(win, log=print, rounds: int = 3, deadline_minutes: float = 25) -> dict:
+def run_pass(win, log=print, rounds: int = 3, deadline_minutes: float = 25,
+             course: str = "") -> dict:
     """按答题卡把所有未答的题补完，每轮都重新读卡核对。
 
     deadline_minutes 是硬上限：跨线程操作 WebView 万一卡住，
     也要能自己收尾，不能让状态一直挂在「作答中」。
+    course 是课程名，带进提示词给模型当学科上下文。
     """
     import time as _t
+
+    if course:
+        set_course_name(course)
 
     deadline = _t.time() + deadline_minutes * 60
     started = _t.time()
