@@ -10,8 +10,8 @@ async function loadLibrary() {
     const r = await fetch('/api/library?q=' + encodeURIComponent(kw));
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || '读取失败');
-    $('lib-total').textContent = d.stats.total;
-    $('lib-confirmed').textContent = d.stats.confirmed;
+    window.countTo($('lib-total'), d.stats.total);
+    window.countTo($('lib-confirmed'), d.stats.confirmed);
     $('lib-pending').textContent = d.stats.pending;
     $('lib-wrong').textContent = d.stats.wrong;
 
@@ -82,6 +82,7 @@ async function loadLibrary() {
       list.appendChild(row);
     });
     box.appendChild(list);
+  window.stagger(list, '.list-row');
   } catch (e) {
     box.innerHTML = '';
     box.appendChild(errorState('读取失败：' + e.message, loadLibrary));
@@ -122,6 +123,7 @@ async function loadRemoteLibrary() {
       list.appendChild(row);
     });
     box.appendChild(list);
+  window.stagger(list, '.list-row');
   } catch (e) {
     box.innerHTML = '';
     box.appendChild(errorState('读取失败：' + e.message, loadRemoteLibrary));

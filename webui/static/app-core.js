@@ -236,6 +236,43 @@ window.iconButton = function (text, icon, cls, size) {
   return btn;
 };
 
+/* ---------- 列表错落进入 ---------- */
+/* 用 --i 给每个条目一个序号，CSS 据此算出延迟。
+   条数多时只给前几十个编序号，后面的一起出现，免得等太久。 */
+window.stagger = function (root, selector, max) {
+  if (!root) return;
+  const items = root.querySelectorAll(selector);
+  const cap = max || 24;
+  items.forEach((el, i) => {
+    if (i < cap) el.style.setProperty('--i', i);
+    else el.style.removeProperty('--i');
+  });
+};
+
+/* ---------- 数字滚动 ---------- */
+/* 统计卡片上的数字变化时滚一下，比直接跳变好读。 */
+window.countTo = function (el, target) {
+  if (!el) return;
+  const to = Math.round(Number(target) || 0);
+  const from = Math.round(Number(el.textContent) || 0);
+  if (from === to) return;
+  const calm = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (calm || Math.abs(to - from) < 1) {
+    el.textContent = String(to);
+    return;
+  }
+  const start = performance.now();
+  const duration = 420;
+  const step = (now) => {
+    const p = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = String(Math.round(from + (to - from) * eased));
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+};
+
 /* ---------- 高级设置抽屉 ---------- */
 function openAdv() {
   $('adv-mask').classList.add('open');

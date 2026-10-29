@@ -176,12 +176,30 @@
   @media(max-width:760px){.agent-stats{grid-template-columns:repeat(2,1fr)}}
 
   /* ---------- 动效：只用透明度和几像素位移，克制、不抢注意力 ---------- */
+  /* 换页交给 View Transitions 做：只给内容区命名，侧栏和日志面板不参与， */
+  /* 免得整块界面一起抖。支持的浏览器上，.page 自己的进入动画要让位。 */
+  .content{view-transition-name:page-body}
+  html.vt .page.on{animation:none}
+  html.vt .list-row,html.vt .agent-row{animation-duration:260ms}
+  ::view-transition-old(page-body){
+    animation:vtOut 150ms cubic-bezier(.4,0,.7,1) both;
+  }
+  ::view-transition-new(page-body){
+    animation:vtIn 260ms cubic-bezier(.22,.61,.36,1) both;
+  }
+  @keyframes vtOut{
+    to{opacity:0;transform:translateY(-5px)}
+  }
+  @keyframes vtIn{
+    from{opacity:0;transform:translateY(9px)}
+  }
+
   @keyframes fadeUp{
     from{opacity:0;transform:translateY(6px)}
     to{opacity:1;transform:none}
   }
   @keyframes rowIn{
-    from{opacity:0;transform:translateY(4px)}
+    from{opacity:0;transform:translateY(6px)}
     to{opacity:1;transform:none}
   }
   @keyframes logIn{
@@ -197,16 +215,13 @@
     to{opacity:1}
   }
 
-  .list-row{animation:rowIn 200ms ease both}
-  .list-row:nth-child(2){animation-delay:18ms}
-  .list-row:nth-child(3){animation-delay:36ms}
-  .list-row:nth-child(4){animation-delay:54ms}
-  .list-row:nth-child(5){animation-delay:72ms}
-  .list-row:nth-child(6){animation-delay:90ms}
-  .list-row:nth-child(n+7){animation-delay:108ms}
-
+  /* 列表项按 stagger() 写进来的 --i 依次进入 */
+  .list-row,.agent-row{animation:rowIn 300ms cubic-bezier(.22,.61,.36,1) both;
+    animation-delay:calc(var(--i, 0) * 26ms)}
+  .stat,.agent-stat{animation:rowIn 320ms cubic-bezier(.22,.61,.36,1) both;
+    animation-delay:calc(var(--i, 0) * 40ms)}
   #logs > div{animation:logIn 160ms ease both}
-  .card{animation:fadeIn 200ms ease both}
+  .card{animation:fadeIn 220ms ease both}
   #update-bar:not([hidden]){animation:fadeUp 200ms ease both}
   dialog.update[open]{animation:fadeUp 200ms ease both}
   dialog.update[open]::backdrop{animation:fadeIn 200ms ease both}
@@ -378,8 +393,10 @@
     background:var(--c-surface);border-radius:14px;overflow:hidden;
     box-shadow:0 24px 60px rgba(16,20,26,.3);animation:fadeUp 220ms ease both}
   .wl-illu{height:168px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(180deg,var(--c-primary-soft),var(--c-surface));
-    border-bottom:1px solid var(--c-line);color:var(--c-primary)}
+    background:var(--c-surface);border-bottom:1px solid var(--c-line-soft);overflow:hidden}
+  .wl-img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;
+    user-select:none;-webkit-user-drag:none;
+    animation:illuIn 480ms cubic-bezier(.22,.61,.36,1) both}
   .wl-body{padding:15px 22px 2px}
   .wl-body h2{margin:0 0 6px;font-size:16px;font-weight:600}
   .wl-body p{margin:0;font-size:12.5px;color:var(--c-ink2);line-height:1.7}

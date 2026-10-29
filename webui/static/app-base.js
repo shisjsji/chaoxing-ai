@@ -45,18 +45,38 @@ function morphNavIcons(page) {
   });
 }
 
+/* WebView2 是 Chromium，支持 View Transitions 就用它做页面切换：
+   旧页面淡出、新页面淡入，中间不用等 DOM 重排。
+   不支持的旧内核退回 CSS 的 fadeUp，行为不变。 */
+const VT_READY = typeof document.startViewTransition === 'function';
+if (VT_READY) document.documentElement.classList.add('vt');
+
 function switchPage(page) {
-  document.querySelectorAll('.nav-item').forEach(b =>
-    b.setAttribute('aria-current', b.dataset.page === page ? 'page' : 'false'));
-  document.querySelectorAll('.page').forEach(p => p.classList.toggle('on', p.id === 'page-' + page));
-  morphNavIcons(page);
-  if (page === 'library') loadLibrary();
-  if (page === 'agent') loadAgent();
-  if (page === 'exams') {
-    if (!examCourses.length) loadExams();
-    refreshExamCloseBtn();
+  const apply = () => {
+    document.querySelectorAll('.nav-item').forEach(b =>
+      b.setAttribute('aria-current', b.dataset.page === page ? 'page' : 'false'));
+    document.querySelectorAll('.page').forEach(p => p.classList.toggle('on', p.id === 'page-' + page));
+    morphNavIcons(page);
+    if (page === 'library') loadLibrary();
+    if (page === 'agent') loadAgent();
+    if (page === 'exams') {
+      if (!examCourses.length) loadExams();
+      refreshExamCloseBtn();
+    }
+    queueExamSync(60);
+  };
+
+  const calm = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (VT_READY && !calm) {
+    try {
+      document.startViewTransition(apply);
+      return;
+    } catch (e) {
+      /* 过渡失败就走普通切换 */
+    }
   }
-  queueExamSync(60);
+  apply();
 }
 
 /* ---------- 考场窗口跟随页面里留出的那块区域 ---------- */

@@ -1,53 +1,16 @@
 /* 新手教程 */
 
 /* ---------- 新手教程 ---------- */
-const ILLU = {
-  welcome: `<svg viewBox="0 0 320 150" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="58" y="30" width="204" height="94" rx="8" opacity=".5"/>
-    <rect x="70" y="42" width="180" height="70" rx="6"/>
-    <path d="M70 58h180" opacity=".5"/>
-    <circle cx="80" cy="50" r="2.4" fill="currentColor" stroke="none"/>
-    <circle cx="89" cy="50" r="2.4" fill="currentColor" stroke="none" opacity=".5"/>
-    <path d="M86 80h56M86 92h88" opacity=".7"/>
-    <path d="M232 80l14 8-14 8z" fill="currentColor" stroke="none" opacity=".85"/>
-  </svg>`,
-  account: `<svg viewBox="0 0 320 150" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="64" y="34" width="192" height="82" rx="9"/>
-    <path d="M64 52h192" opacity=".5"/>
-    <rect x="78" y="64" width="86" height="14" rx="4" opacity=".65"/>
-    <rect x="78" y="88" width="120" height="14" rx="4" opacity=".65"/>
-    <path d="M196 64h44" opacity=".35"/>
-    <circle cx="248" cy="52" r="5" opacity=".8"/>
-    <path d="M36 76a12 12 0 0 1 12-12h6" opacity=".0"/>
-    <rect x="246" y="88" width="24" height="14" rx="4" fill="currentColor" stroke="none" opacity=".85"/>
-  </svg>`,
-  key: `<svg viewBox="0 0 320 150" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="104" cy="75" r="22"/>
-    <circle cx="104" cy="75" r="8" opacity=".5"/>
-    <path d="M126 75h94"/>
-    <path d="M196 75v16M212 75v11"/>
-    <path d="M150 40h96" opacity=".3"/>
-    <path d="M150 110h64" opacity=".3"/>
-    <path d="M60 48l6 6M60 102l6-6" opacity=".5"/>
-  </svg>`,
-  run: `<svg viewBox="0 0 320 150" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="58" y="36" width="204" height="78" rx="9" opacity=".55"/>
-    <circle cx="86" cy="56" r="4" fill="currentColor" stroke="none"/>
-    <path d="M100 56h74" opacity=".5"/>
-    <rect x="74" y="74" width="120" height="10" rx="5" opacity=".45"/>
-    <rect x="74" y="74" width="76" height="10" rx="5" fill="currentColor" stroke="none" opacity=".8"/>
-    <rect x="74" y="92" width="140" height="10" rx="5" opacity=".45"/>
-    <rect x="74" y="92" width="40" height="10" rx="5" fill="currentColor" stroke="none" opacity=".55"/>
-    <path d="M216 66l22 11-22 11z" fill="currentColor" stroke="none" opacity=".9"/>
-  </svg>`,
-  library: `<svg viewBox="0 0 320 150" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <ellipse cx="160" cy="52" rx="46" ry="14"/>
-    <path d="M114 52v42c0 8 21 14 46 14s46-6 46-14V52"/>
-    <path d="M114 73c0 8 21 14 46 14s46-6 46-14" opacity=".5"/>
-    <path d="M92 118h136" opacity=".35"/>
-    <path d="M124 108l10 8 20-18" opacity=".85"/>
-  </svg>`,
-};
+const TOUR_IMAGES = ["welcome", "account", "key", "run", "library"];
+
+// 五张插图都是 AI 生成的玻璃质感物件，统一 900×305，嵌进弹窗正好铺满
+const ILLU = TOUR_IMAGES.reduce((acc, name) => {
+  acc[name] = '<img class="wl-img" src="/static/tour/' + name + '.png" alt="" draggable="false">';
+  return acc;
+}, {});
+
+// 提前拉一遍，翻到下一页时不至于空一下
+TOUR_IMAGES.forEach(name => { const img = new Image(); img.src = "/static/tour/" + name + ".png"; });
 
 const TOUR = [
   {

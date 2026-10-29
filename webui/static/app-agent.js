@@ -9,11 +9,16 @@ async function loadAgent() {
     const r = await fetch('/api/agent/config');
     const d = await r.json();
     const s = d.stats || {};
-    $('as-total').textContent = s.total == null ? '–' : s.total;
-    $('as-ok').textContent = s.ok == null ? '–' : s.ok;
-    $('as-suspect').textContent = s.suspect == null ? '–' : s.suspect;
-    $('as-broken').textContent = s.broken == null ? '–' : s.broken;
-    $('as-dup').textContent = s.dup == null ? '–' : s.dup;
+    if (s.total == null) $('as-total').textContent = '–';
+    else window.countTo($('as-total'), s.total);
+    if (s.ok == null) $('as-ok').textContent = '–';
+    else window.countTo($('as-ok'), s.ok);
+    if (s.suspect == null) $('as-suspect').textContent = '–';
+    else window.countTo($('as-suspect'), s.suspect);
+    if (s.broken == null) $('as-broken').textContent = '–';
+    else window.countTo($('as-broken'), s.broken);
+    if (s.dup == null) $('as-dup').textContent = '–';
+    else window.countTo($('as-dup'), s.dup);
     $('agent-model-hint').textContent = d.ready
       ? '判断用 ' + (d.own ? '助教专用模型' : '主配置的大模型') + '：' + (d.model || '')
       : '还没配模型，现在只能查数据毛病和重复题';
@@ -102,6 +107,7 @@ function renderAgentList(items) {
     list.appendChild(row);
   });
   box.appendChild(list);
+  window.stagger(list, '.agent-row');
 }
 
 async function applyAgent(fp, action, extra, btn) {

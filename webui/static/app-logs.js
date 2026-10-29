@@ -192,7 +192,10 @@ function syncNavStatus() {
 function setStat(id, value) {
   const el = $(id);
   const text = String(value);
-  if (el.textContent !== text) el.textContent = text;
+  if (el.textContent === text) return;
+  // 纯数字滚动一下；像「3 / 12」这种带分隔符的直接写
+  if (/^\d+$/.test(text)) window.countTo(el, text);
+  else el.textContent = text;
 }
 
 function updateStats(chapters) {

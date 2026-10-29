@@ -47,6 +47,7 @@ async function loadExams() {
       });
     });
     box.appendChild(list);
+  window.stagger(list, '.list-row');
   } catch (e) {
     box.innerHTML = '';
     box.appendChild(errorState('读取失败：' + e.message, loadExams));
