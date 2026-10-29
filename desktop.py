@@ -118,8 +118,33 @@ def run_task() -> None:
 
 
 def tray_image():
-    """程序内生成托盘图标，避免依赖外部文件。"""
-    from PIL import Image, ImageDraw
+    """托盘图标。
+
+    优先用界面目录里那张图标文件，跟 exe、官网保持同一个样子；
+    文件缺失时退回手绘，保证托盘不会空着。
+    """
+    import os
+
+    from PIL import Image
+
+    candidates = []
+    if getattr(sys, "_MEIPASS", None):
+        candidates.append(os.path.join(sys._MEIPASS, "webui", "static", "app-icon.png"))
+    candidates.append(os.path.join(base_dir(), "_internal", "webui", "static", "app-icon.png"))
+    candidates.append(os.path.join(base_dir(), "webui", "static", "app-icon.png"))
+    candidates.append(os.path.join(base_dir(), "assets", "tray.png"))
+
+    for path in candidates:
+        if not os.path.exists(path):
+            continue
+        try:
+            img = Image.open(path).convert("RGBA")
+            img.load()
+            return img
+        except Exception:
+            continue
+
+    from PIL import ImageDraw
 
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)

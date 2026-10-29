@@ -48,7 +48,9 @@
     background:var(--c-surface);border-right:1px solid var(--c-line);
     padding:14px 10px 10px;overflow:hidden;
   }
-  .nav-brand{padding:2px 8px 14px}
+  .nav-brand{display:flex;align-items:center;gap:10px;padding:2px 8px 14px}
+  .nav-logo{width:30px;height:30px;border-radius:9px;flex:0 0 auto;
+    box-shadow:0 1px 3px rgba(31,35,40,.14)}
   .nav-brand b{display:block;font-size:13.5px;font-weight:600;color:var(--c-ink);letter-spacing:.2px}
   .nav-brand small{display:block;font-weight:400;font-size:11px;color:var(--c-ink3);margin-top:3px}
   .nav-group{display:flex;flex-direction:column;gap:2px}
@@ -99,8 +101,9 @@
   @media (max-width:920px){
     .app{--nav-w:60px}
     .nav{padding:14px 8px 10px}
-    .nav-brand{padding:2px 6px 12px;text-align:center}
+    .nav-brand{padding:2px 6px 12px;text-align:center;justify-content:center;gap:0}
     .nav-brand b,.nav-brand small,.nav-label,.nav-status,.nav-user{display:none}
+    .nav-logo{width:32px;height:32px}
     .nav-item,.nav-quick button{justify-content:center;gap:0;padding:0;height:38px}
     .nav-foot{padding-top:8px}
   }

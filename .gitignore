@@ -183,3 +183,6 @@ release/
 # 本地截图与调试脚本
 _shots/
 _*.py
+
+# 图标生成的原始大图，只保留加工后的结果
+assets/icon-src/
