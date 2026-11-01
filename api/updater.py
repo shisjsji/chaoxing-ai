@@ -22,7 +22,7 @@ import requests
 
 from api.logger import logger
 
-APP_VERSION = "3.8.0-beta.3"
+APP_VERSION = "3.8.1-beta.1"
 APP_NAME = "超星AI答题"
 
 CHECK_TIMEOUT = 8
@@ -48,6 +48,12 @@ PS1_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.ps1")
 # 内置更新日志：断网时也能在界面里看到本版改了什么。
 # 新增版本时同步更新 CHANGELOG.md 与服务端 version.json 的 highlights。
 RELEASES = {
+    "3.8.1-beta.1": [
+        "【BETA】修掉一个会让人以为已经是最新版的 bug：3.8.0-beta.1 和 beta.3 被当成同一个版本，检查更新永远说没有新版",
+        "版本号从 3.8.0 提到 3.8.1，这样装着旧版的设备也能收到这次更新",
+        "修复考试读不到答题卡时谎报「全部题目已作答」：读卡失败现在是明确的报错，不会再让你以为卷子做完了",
+        "以后 beta 之间也能正常分出先后，不用每次靠提主版本号绕过",
+    ],
     "3.8.0-beta.3": [
         "【BETA】这一版改动比上一版大：动了答题提示词，新增了助教和联网搜索，可能有不可控的 bug",
         "【BETA】正在复习备考的话，建议先用上一版，等这版跑稳再说",
@@ -295,20 +301,36 @@ def _is_prerelease(text: str) -> bool:
 
 
 def _newer(latest: str, current: str) -> bool:
-    """latest 是否比 current 新。主版本号相同时，正式版算比 beta 新。"""
-    a, b = _version_tuple(latest), _version_tuple(current)
-    if a != b:
-        return a > b
-    return _is_prerelease(current) and not _is_prerelease(latest)
+    """latest 是否比 current 新。正式版与 beta 的先后已经编进元组里了。"""
+    return _version_tuple(latest) > _version_tuple(current)
 
 
 def _version_tuple(text: str) -> tuple:
-    """只取主版本号做比较：3.8.0-beta.1 与 3.8.0 都算 (3,8,0)。"""
+    """把版本号拆成能直接比大小的元组。
+
+    3.8.0-beta.3 -> (3, 8, 0, 0, 3)
+    3.8.0        -> (3, 8, 0, 1, 0)
+
+    第四位区分预发布（0）和正式版（1），保证同号正式版一定比 beta 新；
+    第五位是 beta 序号。以前只取主版本号，3.8.0-beta.1 和 3.8.0-beta.3
+    会被当成同一个版本，装了 beta.1 的人永远收不到 beta.3 的更新。
+    """
+    raw = str(text or "").strip()
+    main, _, suffix = raw.partition("-")
+
     parts = []
-    for piece in str(text).split("-")[0].split("."):
+    for piece in main.split("."):
         digits = "".join(ch for ch in piece if ch.isdigit())
         parts.append(int(digits) if digits else 0)
-    return tuple(parts)
+    while len(parts) < 3:
+        parts.append(0)
+
+    # 没有后缀就是正式版
+    if not suffix.strip():
+        return tuple(parts + [1, 0])
+
+    digits = "".join(ch for ch in suffix if ch.isdigit())
+    return tuple(parts + [0, int(digits) if digits else 0])
 
 
 def save_pending(zip_path: str, version: str, sha256: str) -> None:

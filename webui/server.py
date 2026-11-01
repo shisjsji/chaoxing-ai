@@ -480,7 +480,10 @@ def _drive_exam(win, course: str = "") -> None:
                                   submitted=bool(stats.get("submitted")))
         log(f"自动作答结束（{elapsed} 秒）：作答 {stats.get('ok', 0)} 题，"
             f"未完成 {stats.get('fail', 0)} 题，剩余未答 {stats.get('left', 0)} 题")
-        if stats.get("submitted"):
+        if stats.get("error"):
+            # 一开始就没读到卷面，别让「剩余 0 题」看起来像全做完了
+            log(f"自动作答没能开始：{stats['error']}")
+        elif stats.get("submitted"):
             log("已自动交卷")
         elif stats.get("left", 0) == 0:
             log("全部题目已作答，但自动交卷没成功——请在考试窗口里手动点交卷")
@@ -1064,7 +1067,7 @@ def api_courses():
             work_max_retries=0,
             work_redo_enabled=False,
         )
-        state = chaoxing.login(login_with_cookies=False)
+        state = chaoxing.login(login_with_cookies=True)
         if not state.get("status"):
             return jsonify(ok=False, error=f"登录失败：{state.get('msg')}"), 400
         courses = chaoxing.get_course_list()

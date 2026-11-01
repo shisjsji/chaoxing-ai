@@ -659,14 +659,17 @@ def run_pass(win, log=print, rounds: int = 3, deadline_minutes: float = 25,
     pace = exam_pace()
     _MISS["n"] = 0
     _SHARED["dead"] = False
-    stats = {"ok": 0, "fail": 0, "left": 0}
+    stats = {"ok": 0, "fail": 0, "left": 0, "error": "", "submitted": False}
     for rnd in range(rounds):
         if _t.time() > deadline:
             log(f"已到 {deadline_minutes:g} 分钟上限，先停在这里")
             break
         card = read_card(win)
         if not card.get("ok"):
-            log("读不到答题卡，停止")
+            # 读不到卡片说明还没进考卷或页面没加载完。
+            # 这时候 left 还是初始值 0，不能拿它当「全部答完」。
+            stats["error"] = "读不到答题卡，可能还没进入考卷或页面没加载完"
+            log(stats["error"] + "，停止")
             break
         if rnd == 0 and card.get("total"):
             # 长卷 + 每题间隔 + 双答会顶到硬上限，中途停住就不会交卷。
@@ -731,8 +734,13 @@ def run_pass(win, log=print, rounds: int = 3, deadline_minutes: float = 25,
         if card["undone"]:
             log("仍未作答：" + "、".join(card["undone"][:20]))
 
-    # 只有确认全部作答才交卷；有未答就留着让人处理，绝不交白卷
     stats["submitted"] = False
+    if stats["error"]:
+        # 读不到题目状态就什么都不交，免得把空卷递上去
+        log("没能读到答题卡，这一轮不做任何提交")
+        return stats
+
+    # 只有确认全部作答才交卷；有未答就留着让人处理，绝不交白卷
     if stats.get("left", 1) == 0:
         # 太快交卷也像机器人：先补足整卷最少用时，再停顿一下
         if pace["min_minutes"]:
