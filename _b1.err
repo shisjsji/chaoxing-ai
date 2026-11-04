@@ -1,0 +1,288 @@
+240 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.9
+243 INFO: Python: 3.12.13
+282 INFO: Platform: Windows-11-10.0.26200-SP0
+283 INFO: Python environment: C:\Users\lldf\XiaomiMiMoProjects\chaoxing-ai\.venv
+452 WARNING: Failed to collect submodules for 'ddddocr.api' because importing 'ddddocr.api' raised: ModuleNotFoundError: No module named 'fastapi'
+397 WARNING: Failed to collect submodules for 'onnxruntime.quantization' because importing 'onnxruntime.quantization' raised: ModuleNotFoundError: No module named 'onnx'
+267 WARNING: Failed to collect submodules for 'webview.platforms.android' because importing 'webview.platforms.android' raised: ModuleNotFoundError: No module named 'android'
+4738 INFO: Module search paths (PYTHONPATH):
+['C:\\Users\\lldf\\XiaomiMiMoProjects\\学习通',
+ 'C:\\Users\\lldf\\AppData\\Roaming\\Xiaomi '
+ 'MiMo\\runtimes\\bundled\\52714f768b8b\\python\\python312.zip',
+ 'C:\\Users\\lldf\\AppData\\Roaming\\Xiaomi '
+ 'MiMo\\runtimes\\bundled\\52714f768b8b\\python\\DLLs',
+ 'C:\\Users\\lldf\\AppData\\Roaming\\Xiaomi '
+ 'MiMo\\runtimes\\bundled\\52714f768b8b\\python\\Lib',
+ 'C:\\Users\\lldf\\AppData\\Roaming\\Xiaomi '
+ 'MiMo\\runtimes\\bundled\\52714f768b8b\\python',
+ 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv',
+ 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages',
+ 'C:\\Users\\lldf\\XiaomiMiMoProjects\\学习通']
+5612 INFO: Appending 'binaries' from .spec
+5615 INFO: Appending 'datas' from .spec
+5642 INFO: checking Analysis
+5793 INFO: Building because C:\Users\lldf\XiaomiMiMoProjects\学习通\api\updater.py changed
+5794 INFO: Looking for Python shared library...
+5794 INFO: Using Python shared library: C:\Users\lldf\AppData\Roaming\Xiaomi MiMo\runtimes\bundled\52714f768b8b\python\python312.dll
+5795 INFO: Running Analysis Analysis-00.toc
+5795 INFO: Target bytecode optimization level: 0
+5801 INFO: Initializing module dependency graph...
+5803 INFO: Initializing module graph hook caches...
+5820 INFO: Analyzing modules for base_library.zip ...
+8009 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+8079 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+9718 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+9893 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11109 INFO: Caching module dependency graph...
+11143 INFO: Analyzing C:\Users\lldf\XiaomiMiMoProjects\学习通\desktop.py
+11165 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11594 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11595 INFO: SetuptoolsInfo: initializing cached setuptools info...
+13217 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+13275 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+14154 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+14275 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+14303 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+14654 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+14902 INFO: Processing standard module hook 'hook-jinja2.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+15429 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+15431 INFO: Setuptools: 'importlib_metadata' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.importlib_metadata'!
+15451 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+15460 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+15485 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+15486 INFO: Setuptools: 'jaraco' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco'!
+15498 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+15498 INFO: Setuptools: 'more_itertools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.more_itertools'!
+15605 INFO: Processing standard module hook 'hook-_osx_support.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+15617 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+15872 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+15876 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+16023 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+16024 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
+16451 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+16453 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+16953 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+16956 INFO: Setuptools: 'wheel' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.wheel'!
+17006 INFO: Processing standard module hook 'hook-setuptools._vendor.importlib_metadata.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+17027 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+17027 INFO: Setuptools: 'zipp' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.zipp'!
+17089 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+17568 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+17641 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+17754 INFO: Processing standard module hook 'hook-chardet.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+18867 INFO: Processing standard module hook 'hook-lxml.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+19609 INFO: Processing standard module hook 'hook-lxml.etree.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+19628 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+20703 INFO: Processing standard module hook 'hook-anyio.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+22178 INFO: Processing standard module hook 'hook-pydantic.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+23280 INFO: Processing standard module hook 'hook-zoneinfo.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+28685 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+32047 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+32150 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+33069 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+33235 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+35600 INFO: Processing standard module hook 'hook-onnxruntime.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+35668 INFO: Processing pre-safe-import-module hook 'hook-tensorflow.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
+35691 INFO: Processing standard module hook 'hook-cv2.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+36744 INFO: Processing standard module hook 'hook-webview.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\webview\\__pyinstaller'
+37118 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+37224 INFO: Processing standard module hook 'hook-clr.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\pythonnet\\_pyinstaller'
+37243 INFO: Processing standard module hook 'hook-clr_loader.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+37320 INFO: Processing standard module hook 'hook-pycparser.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+37781 INFO: Processing standard module hook 'hook-pystray.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+38494 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+38687 INFO: Analyzing hidden import 'ddddocr.__main__'
+38735 INFO: Analyzing hidden import 'ddddocr.charsets'
+38801 INFO: Analyzing hidden import 'onnxruntime.capi.convert_npz_to_onnx_adapter'
+38803 INFO: Analyzing hidden import 'onnxruntime.datasets'
+38804 INFO: Analyzing hidden import 'onnxruntime.tools'
+38808 INFO: Analyzing hidden import 'onnxruntime.tools.check_onnx_model_mobile_usability'
+38831 INFO: Analyzing hidden import 'onnxruntime.tools.convert_onnx_models_to_ort'
+38860 INFO: Analyzing hidden import 'onnxruntime.tools.make_dynamic_shape_fixed'
+38862 INFO: Analyzing hidden import 'onnxruntime.tools.offline_tuning'
+38868 INFO: Analyzing hidden import 'onnxruntime.tools.onnx_randomizer'
+38870 INFO: Analyzing hidden import 'onnxruntime.tools.onnxruntime_test'
+38874 INFO: Analyzing hidden import 'onnxruntime.tools.optimize_onnx_model'
+38876 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py'
+38877 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs'
+38879 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.ArgType'
+38880 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.ArgTypeAndIndex'
+38913 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.Attribute'
+38921 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.AttributeType'
+38922 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.Checkpoint'
+38927 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.DeprecatedKernelCreateInfos'
+38931 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.DeprecatedNodeIndexAndKernelDefHash'
+38933 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.DeprecatedSessionState'
+38937 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.DeprecatedSubGraphSessionState'
+38940 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.Dimension'
+38942 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.DimensionValue'
+38945 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.DimensionValueType'
+38946 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.EdgeEnd'
+38948 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.FloatProperty'
+38950 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.Graph'
+38958 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.InferenceSession'
+38961 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.IntProperty'
+38963 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.KernelTypeStrArgsEntry'
+38967 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.KernelTypeStrResolver'
+38969 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.MapType'
+38972 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.Model'
+38978 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.ModuleState'
+38984 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.Node'
+38993 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.NodeEdge'
+38996 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.NodeType'
+38998 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.NodesToOptimizeIndices'
+39002 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.OpIdKernelTypeStrArgsEntry'
+39006 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.OperatorSetId'
+39009 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.OptimizerGroup'
+39011 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.ParameterOptimizerState'
+39015 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.PropertyBag'
+39019 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.RuntimeOptimizationRecord'
+39023 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.RuntimeOptimizationRecordContainerEntry'
+39026 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.RuntimeOptimizations'
+39028 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.SequenceType'
+39031 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.Shape'
+39034 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.SparseTensor'
+39037 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.StringProperty'
+39039 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.StringStringEntry'
+39041 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.Tensor'
+39049 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.TensorDataType'
+39050 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.TensorTypeAndShape'
+39052 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.TypeInfo'
+39057 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.TypeInfoValue'
+39058 INFO: Analyzing hidden import 'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs.ValueInfo'
+39061 INFO: Analyzing hidden import 'onnxruntime.tools.pytorch_export_contrib_ops'
+39065 INFO: Analyzing hidden import 'onnxruntime.tools.qdq_helpers'
+39066 INFO: Analyzing hidden import 'onnxruntime.tools.qdq_helpers.optimize_qdq_model'
+39067 INFO: Analyzing hidden import 'onnxruntime.tools.reduced_build_config_parser'
+39071 INFO: Analyzing hidden import 'onnxruntime.tools.remove_initializer_from_input'
+39073 INFO: Analyzing hidden import 'onnxruntime.tools.symbolic_shape_infer'
+39185 INFO: Analyzing hidden import 'onnxruntime.tools.update_onnx_opset'
+39187 INFO: Analyzing hidden import 'onnxruntime.transformers.affinity_helper'
+39190 INFO: Analyzing hidden import 'onnxruntime.transformers.benchmark'
+39208 INFO: Analyzing hidden import 'onnxruntime.transformers.benchmark_helper'
+39226 INFO: Analyzing hidden import 'onnxruntime.transformers.bert_perf_test'
+39238 INFO: Analyzing hidden import 'onnxruntime.transformers.bert_test_data'
+39249 INFO: Analyzing hidden import 'onnxruntime.transformers.compare_bert_results'
+39253 INFO: Analyzing hidden import 'onnxruntime.transformers.constants'
+39255 INFO: Analyzing hidden import 'onnxruntime.transformers.convert_generation'
+39388 INFO: Analyzing hidden import 'onnxruntime.transformers.convert_tf_models_to_pytorch'
+39395 INFO: Analyzing hidden import 'onnxruntime.transformers.convert_to_packing_mode'
+39406 INFO: Analyzing hidden import 'onnxruntime.transformers.dynamo_onnx_helper'
+39411 INFO: Analyzing hidden import 'onnxruntime.transformers.float16'
+39425 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_attention'
+39450 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_attention_clip'
+39457 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_attention_sam2'
+39468 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_attention_unet'
+39497 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_attention_vae'
+39508 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_bart_attention'
+39519 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_base'
+39523 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_bias_add'
+39526 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_biasgelu'
+39529 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_biassplitgelu'
+39532 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_conformer_attention'
+39539 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_constant_fold'
+39544 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_embedlayer'
+39559 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_fastgelu'
+39567 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_gelu'
+39573 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_gelu_approximation'
+39575 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_gemmfastgelu'
+39578 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_gpt_attention'
+39588 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_gpt_attention_megatron'
+39594 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_gpt_attention_no_past'
+39659 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_group_norm'
+39666 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_layernorm'
+39677 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_mha_dit'
+39687 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_mha_mmdit'
+39698 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_nhwc_conv'
+39701 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_options'
+39708 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_qordered_attention'
+39719 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_qordered_gelu'
+39721 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_qordered_layernorm'
+39726 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_qordered_matmul'
+39731 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_quickgelu'
+39734 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_reshape'
+39737 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_rotary_attention'
+39775 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_shape'
+39778 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_simplified_layernorm'
+39782 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_skip_group_norm'
+39788 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_skiplayernorm'
+39793 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_transpose'
+39798 INFO: Analyzing hidden import 'onnxruntime.transformers.fusion_utils'
+39806 INFO: Analyzing hidden import 'onnxruntime.transformers.huggingface_models'
+39809 INFO: Analyzing hidden import 'onnxruntime.transformers.import_utils'
+39810 INFO: Analyzing hidden import 'onnxruntime.transformers.io_binding_helper'
+39825 INFO: Analyzing hidden import 'onnxruntime.transformers.large_model_exporter'
+39837 INFO: Analyzing hidden import 'onnxruntime.transformers.metrics'
+39843 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_exporter'
+39859 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model'
+39895 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_bart'
+39901 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_bert'
+39918 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_bert_keras'
+39928 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_bert_tf'
+39940 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_clip'
+39943 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_conformer'
+39945 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_gpt2'
+39949 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_mmdit'
+39965 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_phi'
+39986 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_sam2'
+39991 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_t5'
+40008 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_tnlr'
+40015 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_unet'
+40023 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_model_vae'
+40026 INFO: Analyzing hidden import 'onnxruntime.transformers.onnx_utils'
+40028 INFO: Analyzing hidden import 'onnxruntime.transformers.optimizer'
+40040 INFO: Analyzing hidden import 'onnxruntime.transformers.past_helper'
+40044 INFO: Analyzing hidden import 'onnxruntime.transformers.profile_result_processor'
+40053 INFO: Analyzing hidden import 'onnxruntime.transformers.profiler'
+40061 INFO: Analyzing hidden import 'onnxruntime.transformers.quantize_helper'
+40428 INFO: Analyzing hidden import 'onnxruntime.transformers.shape_infer_helper'
+40435 INFO: Analyzing hidden import 'onnxruntime.transformers.shape_optimizer'
+40445 INFO: Analyzing hidden import 'onnxruntime.transformers.torch_onnx_export_helper'
+40448 INFO: Analyzing hidden import 'webview.__pyinstaller'
+40450 INFO: Analyzing hidden import 'webview.__pyinstaller.hook-webview'
+40476 INFO: Processing standard module hook 'hook-win32ctypes.core.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+42880 INFO: Analyzing hidden import 'webview._version'
+42882 INFO: Processing module hooks (post-graph stage)...
+43229 INFO: Processing standard module hook 'hook-lxml.isoschematron.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+43283 WARNING: Hidden import "pycparser.lextab" not found!
+43284 WARNING: Hidden import "pycparser.yacctab" not found!
+43696 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+43790 INFO: Processing standard module hook 'hook-lxml.objectify.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+43791 INFO: Processing standard module hook 'hook-tzdata.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+44733 INFO: Performing binary vs. data reclassification (1100 entries)
+44829 INFO: Looking for ctypes DLLs
+44920 INFO: Analyzing run-time hooks ...
+44934 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+44936 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+44938 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+44941 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+45009 INFO: Creating base_library.zip...
+45028 INFO: Looking for dynamic libraries
+49724 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\numpy.libs', 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\cv2\\../../x64/vc17/bin']
+49725 INFO: Extra DLL search directories (PATH): ['C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\cv2\\../../x64/vc17/bin']
+50448 INFO: Warnings written to C:\Users\lldf\XiaomiMiMoProjects\学习通\build\超星AI答题\warn-超星AI答题.txt
+50719 INFO: Graph cross-reference written to C:\Users\lldf\XiaomiMiMoProjects\学习通\build\超星AI答题\xref-超星AI答题.html
+50821 INFO: checking PYZ
+50865 INFO: Building because C:\Users\lldf\XiaomiMiMoProjects\学习通\api\updater.py changed
+50866 INFO: Building PYZ (ZlibArchive) C:\Users\lldf\XiaomiMiMoProjects\学习通\build\超星AI答题\PYZ-00.pyz
+52679 INFO: Building PYZ (ZlibArchive) C:\Users\lldf\XiaomiMiMoProjects\学习通\build\超星AI答题\PYZ-00.pyz completed successfully.
+52758 INFO: checking PKG
+52759 INFO: Building because C:\Users\lldf\XiaomiMiMoProjects\学习通\build\超星AI答题\PYZ-00.pyz changed
+52760 INFO: Building PKG (CArchive) 超星AI答题.pkg
+52794 INFO: Building PKG (CArchive) 超星AI答题.pkg completed successfully.
+52795 INFO: Bootloader C:\Users\lldf\XiaomiMiMoProjects\chaoxing-ai\.venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+52796 INFO: checking EXE
+52797 INFO: Rebuilding EXE-00.toc because pkg is more recent
+52797 INFO: Building EXE from EXE-00.toc
+52800 INFO: Copying bootloader EXE to C:\Users\lldf\XiaomiMiMoProjects\学习通\build\超星AI答题\超星AI答题.exe
+52804 INFO: Copying icon to EXE
+52809 INFO: Copying 0 resources to EXE
+52810 INFO: Embedding manifest in EXE
+52813 INFO: Appending PKG archive to EXE
+52826 INFO: Fixing EXE headers
+52932 INFO: Building EXE from EXE-00.toc completed successfully.
+52943 INFO: checking COLLECT
+52953 INFO: Removing dir C:\Users\lldf\XiaomiMiMoProjects\学习通\dist\超星AI答题
+53169 INFO: Building COLLECT COLLECT-00.toc
+54663 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+54684 INFO: Build complete! The results are available in: C:\Users\lldf\XiaomiMiMoProjects\学习通\dist

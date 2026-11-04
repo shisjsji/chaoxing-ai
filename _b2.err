@@ -1,0 +1,114 @@
+264 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.9
+265 INFO: Python: 3.12.13
+308 INFO: Platform: Windows-11-10.0.26200-SP0
+309 INFO: Python environment: C:\Users\lldf\XiaomiMiMoProjects\chaoxing-ai\.venv
+254 WARNING: Failed to collect submodules for 'webview.platforms.android' because importing 'webview.platforms.android' raised: ModuleNotFoundError: No module named 'android'
+1542 INFO: Module search paths (PYTHONPATH):
+['C:\\Users\\lldf\\XiaomiMiMoProjects\\学习通',
+ 'C:\\Users\\lldf\\AppData\\Roaming\\Xiaomi '
+ 'MiMo\\runtimes\\bundled\\52714f768b8b\\python\\python312.zip',
+ 'C:\\Users\\lldf\\AppData\\Roaming\\Xiaomi '
+ 'MiMo\\runtimes\\bundled\\52714f768b8b\\python\\DLLs',
+ 'C:\\Users\\lldf\\AppData\\Roaming\\Xiaomi '
+ 'MiMo\\runtimes\\bundled\\52714f768b8b\\python\\Lib',
+ 'C:\\Users\\lldf\\AppData\\Roaming\\Xiaomi '
+ 'MiMo\\runtimes\\bundled\\52714f768b8b\\python',
+ 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv',
+ 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages',
+ 'C:\\Users\\lldf\\XiaomiMiMoProjects\\学习通']
+2391 INFO: Appending 'binaries' from .spec
+2392 INFO: Appending 'datas' from .spec
+2399 INFO: checking Analysis
+2417 INFO: Building because C:\Users\lldf\XiaomiMiMoProjects\学习通\release\setup\payload.zip changed
+2418 INFO: Looking for Python shared library...
+2418 INFO: Using Python shared library: C:\Users\lldf\AppData\Roaming\Xiaomi MiMo\runtimes\bundled\52714f768b8b\python\python312.dll
+2419 INFO: Running Analysis Analysis-00.toc
+2419 INFO: Target bytecode optimization level: 0
+2420 INFO: Initializing module dependency graph...
+2421 INFO: Initializing module graph hook caches...
+2434 INFO: Analyzing modules for base_library.zip ...
+4529 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+4603 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+6037 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+6195 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+7320 INFO: Caching module dependency graph...
+7350 INFO: Analyzing C:\Users\lldf\XiaomiMiMoProjects\学习通\installer_ui.py
+7930 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+7933 INFO: SetuptoolsInfo: initializing cached setuptools info...
+9094 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+9159 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+9363 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+9881 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+9993 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+10020 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+10258 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+10437 INFO: Processing standard module hook 'hook-jinja2.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+10931 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+10932 INFO: Setuptools: 'importlib_metadata' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.importlib_metadata'!
+10938 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+10951 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+10971 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+10972 INFO: Setuptools: 'jaraco' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco'!
+10979 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+10979 INFO: Setuptools: 'more_itertools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.more_itertools'!
+11074 INFO: Processing standard module hook 'hook-_osx_support.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11086 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11268 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11270 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11400 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11401 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
+11775 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11778 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+12221 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+12222 INFO: Setuptools: 'wheel' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.wheel'!
+12295 INFO: Processing standard module hook 'hook-setuptools._vendor.importlib_metadata.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+12339 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+12340 INFO: Setuptools: 'zipp' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.zipp'!
+12374 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+12375 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+12820 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+12865 INFO: Processing standard module hook 'hook-webview.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\webview\\__pyinstaller'
+13239 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+13346 INFO: Processing standard module hook 'hook-clr.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\pythonnet\\_pyinstaller'
+13365 INFO: Processing standard module hook 'hook-clr_loader.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+13550 INFO: Processing standard module hook 'hook-pycparser.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+14105 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+14194 INFO: Analyzing hidden import 'webview.__pyinstaller'
+14196 INFO: Analyzing hidden import 'webview.__pyinstaller.hook-webview'
+14225 INFO: Processing standard module hook 'hook-win32ctypes.core.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+16906 INFO: Analyzing hidden import 'webview._version'
+16909 INFO: Processing module hooks (post-graph stage)...
+16910 WARNING: Hidden import "pycparser.lextab" not found!
+16910 WARNING: Hidden import "pycparser.yacctab" not found!
+17013 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+17027 INFO: Performing binary vs. data reclassification (1005 entries)
+17108 INFO: Looking for ctypes DLLs
+17168 INFO: Analyzing run-time hooks ...
+17173 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+17175 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+17177 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+17180 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+17184 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Users\\lldf\\XiaomiMiMoProjects\\chaoxing-ai\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+17218 INFO: Creating base_library.zip...
+17236 INFO: Looking for dynamic libraries
+18662 INFO: Extra DLL search directories (AddDllDirectory): []
+18664 INFO: Extra DLL search directories (PATH): []
+18944 INFO: Warnings written to C:\Users\lldf\XiaomiMiMoProjects\学习通\build\超星AI答题-安装\warn-超星AI答题-安装.txt
+18994 INFO: Graph cross-reference written to C:\Users\lldf\XiaomiMiMoProjects\学习通\build\超星AI答题-安装\xref-超星AI答题-安装.html
+19035 INFO: checking PYZ
+19073 INFO: checking PKG
+19083 INFO: Building because toc changed
+19084 INFO: Building PKG (CArchive) 超星AI答题-安装.pkg
+29626 INFO: Building PKG (CArchive) 超星AI答题-安装.pkg completed successfully.
+29644 INFO: Bootloader C:\Users\lldf\XiaomiMiMoProjects\chaoxing-ai\.venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+29644 INFO: checking EXE
+29654 INFO: Building because toc changed
+29654 INFO: Building EXE from EXE-00.toc
+29677 INFO: Copying bootloader EXE to C:\Users\lldf\XiaomiMiMoProjects\学习通\dist\超星AI答题-安装.exe
+29680 INFO: Copying icon to EXE
+29684 INFO: Copying 0 resources to EXE
+29685 INFO: Embedding manifest in EXE
+29687 INFO: Appending PKG archive to EXE
+29857 INFO: Fixing EXE headers
+30836 INFO: Building EXE from EXE-00.toc completed successfully.
+30854 INFO: Build complete! The results are available in: C:\Users\lldf\XiaomiMiMoProjects\学习通\dist

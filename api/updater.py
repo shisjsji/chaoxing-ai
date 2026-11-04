@@ -22,7 +22,7 @@ import requests
 
 from api.logger import logger
 
-APP_VERSION = "3.8.1-beta.2"
+APP_VERSION = "3.8.1"
 APP_NAME = "超星AI答题"
 
 CHECK_TIMEOUT = 8
@@ -48,8 +48,8 @@ PS1_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.ps1")
 # 内置更新日志：断网时也能在界面里看到本版改了什么。
 # 新增版本时同步更新 CHANGELOG.md 与服务端 version.json 的 highlights。
 RELEASES = {
-    "3.8.1-beta.2": [
-        "【BETA】这一版全是修 bug，建议升级",
+    "3.8.1": [
+        "这一版全是 bug 修复，涉及分数、题库数据和安装安全，建议升级",
         "修「一次重做之后，后面每章覆盖率不够也直接提交」：重做计数改成只对本章有效",
         "修「人工标错的答案被 AI 改回已确认」：现在只有平台公布的正确答案能改回来",
         "修交卷漏了试卷页的结构性字段，平台可能回「无效操作」",
