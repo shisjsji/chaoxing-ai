@@ -191,3 +191,7 @@ _*.py
 # 图标生成的原始大图，只保留加工后的结果
 assets/icon-src/
 assets/tour/
+
+# 构建/调试临时产物
+_*.err
+_build_*.log
