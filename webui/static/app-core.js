@@ -1,5 +1,20 @@
 /* 通用工具、图标挂载、高级设置抽屉 */
 
+/* ---------- 界面令牌 ---------- */
+/* 本地接口没有登录，只认这枚随进程生成的令牌（页面由后端注入 meta）。
+   在这一层统一加头，各个业务的 fetch 不用改。 */
+const UI_TOKEN = (document.querySelector('meta[name="cx-token"]') || {}).content || '';
+const rawFetch = window.fetch.bind(window);
+window.fetch = function (url, opts) {
+  const target = typeof url === 'string' ? url : (url && url.url) || '';
+  if (!UI_TOKEN || target.indexOf('/api/') !== 0) return rawFetch(url, opts);
+  const init = Object.assign({}, opts || {});
+  const headers = new Headers(init.headers || {});
+  headers.set('X-Token', UI_TOKEN);
+  init.headers = headers;
+  return rawFetch(url, init);
+};
+
 /* ---------- 通用 ---------- */
 function setMsg(text, kind) {
   const el = $('msg');

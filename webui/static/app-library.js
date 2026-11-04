@@ -130,8 +130,10 @@ async function loadRemoteLibrary() {
   }
 }
 
-$('btnLibRefresh').onclick = loadLibrary;
+/* 刷新按钮给图标反馈：点下去转圈，成功对勾、失败叉。
+   题库页以前是纯文字按钮，点完只有列表变化，看不出到底跑没跑。 */
+$('btnLibRefresh').onclick = () => actWithFeedback('btnLibRefresh', loadLibrary);
 $('lib-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadLibrary(); });
-$('btnRemoteRefresh').onclick = loadRemoteLibrary;
+$('btnRemoteRefresh').onclick = () => actWithFeedback('btnRemoteRefresh', loadRemoteLibrary);
 $('remote-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadRemoteLibrary(); });
 $('remote-lib').addEventListener('toggle', e => { if (e.target.open) loadRemoteLibrary(); });

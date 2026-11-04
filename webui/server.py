@@ -7,6 +7,7 @@
 import json
 import os
 import re
+import secrets
 import subprocess
 import sys
 import threading
@@ -56,10 +57,27 @@ app = Flask(
     template_folder=str(Path(__file__).resolve().parent / "templates"),
 )
 
+# 界面令牌：这个服务监听 127.0.0.1 却没有登录，而它的接口能把配置改掉、
+# 把题库删空、还能下载并重启「更新包」。没有这道闸，用户在浏览器里打开的
+# 任意网页都能对着 5000 端口发 POST。令牌随进程生成，注入页面由前端带着走。
+UI_TOKEN = os.environ.get("CX_UI_TOKEN") or secrets.token_urlsafe(18)
+
+
+@app.before_request
+def _guard_ui_token():
+    if not (request.path or "").startswith("/api/"):
+        return None
+    if request.headers.get("X-Token") == UI_TOKEN:
+        return None
+    return jsonify(ok=False, error="未授权的调用：缺少界面令牌"), 403
+
 _lock = threading.Lock()
 # 更新进度：下载在后台线程跑，前端轮询这个状态画进度条
 _update_state = {"stage": "idle", "percent": 0, "done": 0, "total": 0,
                  "message": "", "error": "", "version": ""}
+# 检查更新时服务端自己发现的版本。下载接口只认这一份，
+# 免得任意 URL 都能被塞进来当「更新包」装上。
+_pending_update = {"url": "", "sha256": "", "version": ""}
 
 # 内嵌考试浏览器：由桌面入口注入窗口对象，这里负责盯着它的地址栏
 _exam_browser = {"window": None, "url": "", "enc": "", "answer_id": "", "exam_id": ""}
@@ -376,6 +394,13 @@ def api_exam_browser_open():
                        error="内嵌浏览器不可用，请在浏览器里手动进入考试后点「接管」"), 400
     with _lock:
         _exam_browser.update(url="", enc="", answer_id="", exam_id="")
+    # 用户可能刚在设置里登录过，先把最新的 cookie 推进浏览器再导航
+    try:
+        from api import browser_unlock
+
+        browser_unlock.sync_cookies(win, "考场浏览器", force=True)
+    except Exception:
+        pass
     try:
         win.load_url(url or "https://mooc1.chaoxing.com/")
     except Exception as exc:
@@ -465,12 +490,14 @@ def api_exam_autodrive():
 
 
 def _drive_exam(win, course: str = "") -> None:
-    from api.browser_exam import run_pass
-
     def log(msg: str) -> None:
         _append_log(msg)
 
     try:
+        # import 放在 try 里面：模块缺失时线程会静默死掉，
+        # driving 一直为 True，之后再点考试全是 409。
+        from api.browser_exam import run_pass
+
         started = time.time()
         log("开始在考试窗口里自动作答")
         stats = run_pass(win, log, course=course)
@@ -499,7 +526,11 @@ def _drive_exam(win, course: str = "") -> None:
             pass
     finally:
         with _lock:
-            _state["exam"].update(driving=False, status="done")
+            # 出错时不能把状态改回 done：前端靠 status 区分「没交卷」和
+            # 「中途出错」，一律写 done 会把异常说成正常结束。
+            failed = bool(_state["exam"].get("error"))
+            _state["exam"].update(driving=False,
+                                  status="error" if failed else "done")
 
 
 
@@ -648,7 +679,7 @@ def _validate(cfg: dict) -> str | None:
 
 @app.get("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", ui_token=UI_TOKEN)
 
 
 @app.get("/api/config")
@@ -826,6 +857,10 @@ def api_update_check():
         result = check_update(cfg.get("endpoint", ""), cfg.get("token", ""))
         result["current"] = current_version()
         result.setdefault("current_changelog", changelog())
+        if result.get("url"):
+            _pending_update.update(url=str(result.get("url") or ""),
+                                   sha256=str(result.get("sha256") or ""),
+                                   version=str(result.get("version") or ""))
         return jsonify(result)
     except Exception as exc:
         return jsonify(ok=False, error=f"{type(exc).__name__}: {exc}"), 500
@@ -840,6 +875,15 @@ def api_update_apply():
     version = str(data.get("version", "")).strip()
     if not url:
         return jsonify(ok=False, error="缺少下载地址"), 400
+    # 只装「检查更新」发现的那个版本：地址和校验值都由服务端自己存过一份，
+    # 客户端传什么都不能构成新的下载目标。
+    if not _pending_update["url"] or url != _pending_update["url"]:
+        return jsonify(ok=False, error="没有可安装的版本，请先点「检查更新」"), 400
+    sha = sha or _pending_update["sha256"]
+    if _pending_update["sha256"] and sha != _pending_update["sha256"]:
+        return jsonify(ok=False, error="校验值对不上，已拒绝安装"), 400
+    if not sha:
+        return jsonify(ok=False, error="缺少校验值，已拒绝安装"), 400
 
     with _lock:
         if _update_state["stage"] in ("downloading", "verifying", "preparing", "restarting"):
@@ -853,7 +897,6 @@ def api_update_apply():
 
 def _run_update(url: str, sha: str, version: str) -> None:
     """后台下载并准备替换。每一步都更新 _update_state 供前端显示。"""
-    from api.updater import apply_and_restart, download
 
     def progress(done_bytes: int, total_bytes: int) -> None:
         percent = int(done_bytes * 100 / total_bytes) if total_bytes else 0
@@ -867,6 +910,8 @@ def _run_update(url: str, sha: str, version: str) -> None:
                                  total=total_bytes, message=message)
 
     try:
+        from api.updater import download
+
         path = download(url, sha, progress=progress)
         with _lock:
             _update_state.update(stage="verifying", percent=100, message="校验通过")
@@ -1117,7 +1162,6 @@ def api_start():
         bufsize=1,
         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
     )
-    _append_log(f"任务进程已启动（PID {proc.pid}）", kind="ui")
     with _lock:
         _state["proc"] = proc
         _state["stopping"] = False
@@ -1127,6 +1171,9 @@ def api_start():
         _state["status"] = "running"
         _state["exit_code"] = None
         _state["started_at"] = time.time()
+    # 先重置队列和序号，再写这条启动日志。反过来的话它会把自己清掉，
+    # 而且前端 since 会停在上一轮的最大值，第二轮起日志面板整段空白。
+    _append_log(f"任务进程已启动（PID {proc.pid}）", kind="ui")
     threading.Thread(target=_pump, args=(proc,), daemon=True).start()
     threading.Thread(target=_watchdog, args=(proc,), daemon=True).start()
     # 子进程启动时会读取配置，稍后删除临时文件，避免明文密码长期留在磁盘上
@@ -1237,6 +1284,15 @@ def _kill_tree(proc: subprocess.Popen) -> None:
             pass
 
 
+def kill_task_process() -> None:
+    """结束正在跑的刷课任务进程。桌面入口退出时也要调它，
+    否则托盘退出后子进程还在答题、提交，重开界面却显示「空闲」。"""
+    with _lock:
+        proc = _state["proc"]
+    if proc is not None:
+        _kill_tree(proc)
+
+
 @app.post("/api/stop")
 def api_stop():
     with _lock:
@@ -1338,9 +1394,9 @@ def api_agent_audit():
 
 def _run_agent_audit(max_items: int, use_model: bool, only_new: bool,
                      use_search: bool = True) -> None:
-    from api import agent as agent_mod
-
     try:
+        from api import agent as agent_mod
+
         result = agent_mod.audit(max_items=max_items, use_model=use_model,
                                  log=_agent_log, only_unaudited=only_new,
                                  use_search=use_search)

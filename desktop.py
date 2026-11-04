@@ -195,24 +195,35 @@ def launch_window() -> None:
 
     set_exam_window(exam)
 
-    def _embed_exam() -> None:
-        """等两个窗口的原生句柄都就绪，再把考场窗口挂进主窗口。"""
+    # 考场窗口兼作「打开其他课程页面」的浏览器，那类页面常把复制粘贴拦掉。
+    # 解锁脚本要在任何导航之前挂上，所以和挂载并行跑，互不依赖；
+    # 顺带把设置里登录的 cookie 推进浏览器，打开就是登录状态。
+    def _unlock(win, label: str) -> None:
+        from api import browser_unlock
+
+        browser_unlock.prepare(win, label)
+
+    threading.Thread(target=_unlock, args=(exam, "考场浏览器"), daemon=True).start()
+
+    def _embed(stage_name: str, win, main) -> None:
+        """等窗口的原生句柄就绪，再把它挂进主窗口。"""
         from api import exam_embed
 
+        stage = exam_embed.get(stage_name)
         for _ in range(80):
             time.sleep(0.3)
             try:
-                if exam_embed.attach(window, exam):
+                if stage.attach(main, win):
                     return
             except Exception:
                 pass
         # 挂不进去就还原成普通窗口，否则无边框又关不掉
         try:
-            exam_embed.make_standalone(exam)
+            stage.make_standalone(win)
         except Exception:
             pass
 
-    threading.Thread(target=_embed_exam, daemon=True).start()
+    threading.Thread(target=_embed, args=("exam", exam, window), daemon=True).start()
 
     # 先显示启动提示，等本地服务真的能响应再加载界面，
     # 避免 WebView2 冷启动时长时间黑屏
@@ -237,6 +248,14 @@ def launch_window() -> None:
             append_ui_log("界面退出")
         except Exception:
             pass
+        # 退出就是停止：刷课是独立子进程，不杀它就会在托盘消失后继续
+        # 答题并提交章节测验，重开界面还显示「空闲」，点开始还会跑第二份。
+        try:
+            from webui.server import kill_task_process
+
+            kill_task_process()
+        except Exception:
+            pass
         try:
             if state["tray"] is not None:
                 state["tray"].stop()
@@ -245,7 +264,7 @@ def launch_window() -> None:
         try:
             from api import exam_embed
 
-            exam_embed.detach()
+            exam_embed.detach_all()
         except Exception:
             pass
         try:

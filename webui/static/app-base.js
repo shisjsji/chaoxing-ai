@@ -26,9 +26,9 @@ document.querySelectorAll('.nav-item').forEach(btn => {
 // 每项都有一对形状：普通态和选中态。切换页面时做形变过渡。
 // 助教用 Sparkle，只有一种形状，不在表里。
 const NAV_ICON_ON = {overview: 'GridOn', exams: 'ExamOn', library: 'LibraryOn',
-                     settings: 'SlidersOn', about: 'InfoOn'};
+                     agent: 'SparkleOn', settings: 'SlidersOn', about: 'InfoOn'};
 const NAV_ICON_OFF = {overview: 'Grid', exams: 'Exam', library: 'Library',
-                      settings: 'Sliders', about: 'Info'};
+                      agent: 'Sparkle', settings: 'Sliders', about: 'Info'};
 
 function morphNavIcons(page) {
   const icons = window.MORPH_ICONS;
@@ -63,6 +63,12 @@ function switchPage(page) {
       if (!examCourses.length) loadExams();
       refreshExamCloseBtn();
     }
+  };
+
+  // 过渡动画期间页面带着位移，这时候量出来的坐标是偏的，
+  // 原生窗口照着摆就会漂到别处。所以动画没结束不上报坐标。
+  const finish = () => {
+    vtBusy = false;
     queueExamSync(60);
   };
 
@@ -70,17 +76,26 @@ function switchPage(page) {
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (VT_READY && !calm) {
     try {
-      document.startViewTransition(apply);
+      vtBusy = true;
+      const t = document.startViewTransition(apply);
+      if (t && t.finished && t.finished.then) {
+        t.finished.then(finish).catch(finish);
+      } else {
+        setTimeout(finish, 400);
+      }
       return;
     } catch (e) {
-      /* 过渡失败就走普通切换 */
+      vtBusy = false;
     }
   }
   apply();
+  finish();
 }
 
 /* ---------- 考场窗口跟随页面里留出的那块区域 ---------- */
 let stageSyncTimer = 0;
+// 换页过渡进行中：这段时间量出来的位置不可信
+let vtBusy = false;
 let lastStageBox = '';
 
 function examStageBox() {
@@ -104,6 +119,7 @@ function examStageBox() {
 }
 
 function syncExamStage(force) {
+  if (vtBusy) return Promise.resolve();
   const box = examStageBox();
   const key = JSON.stringify(box);
   // 上方列表加载完会把这块区域推下去，尺寸没变但位置变了，

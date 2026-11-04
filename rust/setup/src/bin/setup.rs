@@ -69,22 +69,72 @@ fn fail(hwnd: HWND, message: String) {
 fn do_install(target: &Path, progress: &dyn Fn(usize)) -> Result<(), String> {
     log(&format!("开始安装到 {}", target.display()));
     kill_app();
-    // 只清程序文件，配置和题库保留（覆盖安装不丢资料）
-    for item in PROGRAM_ITEMS {
-        let path = target.join(item);
-        let _ = if path.is_dir() {
-            std::fs::remove_dir_all(&path)
-        } else {
-            std::fs::remove_file(&path)
-        };
-    }
 
     let payload = Payload::open_self().map_err(|e| format!("读取安装包失败：{e}"))?;
-    extract_payload(&payload, target, &|done, total| {
+
+    // 先解压到旁边的暂存目录，校验通过再动正式目录。
+    // 以前是先删程序文件再解压：包被截断、杀软清掉 exe 尾部、磁盘满，
+    // 都会在旧版本已经删掉之后失败，留下半套文件而且重装还是同样顺序。
+    let stage = target.join("_install_new");
+    if stage.exists() {
+        let _ = std::fs::remove_dir_all(&stage);
+    }
+    std::fs::create_dir_all(&stage).map_err(|e| format!("创建暂存目录失败：{e}"))?;
+    extract_payload(&payload, &stage, &|done, total| {
         let percent = if total == 0 { 0 } else { (done * 100 / total) as usize };
         progress(percent);
     })?;
-    verify_install(target)?;
+    if let Err(exc) = verify_install(&stage) {
+        let _ = std::fs::remove_dir_all(&stage);
+        return Err(format!("安装包不完整，现有程序未改动：{exc}"));
+    }
+
+    // 校验过了：旧文件挪进备份目录，再换成新的
+    let backup = target.join("_install_old");
+    if backup.exists() {
+        let _ = std::fs::remove_dir_all(&backup);
+    }
+    let mut moved: Vec<&str> = Vec::new();
+    let mut swap_error: Option<String> = None;
+    for item in PROGRAM_ITEMS {
+        let old = target.join(item);
+        if !old.exists() {
+            continue;
+        }
+        let kept = backup.join(item);
+        if let Some(parent) = kept.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::rename(&old, &kept) {
+            Ok(()) => moved.push(item),
+            Err(exc) => {
+                swap_error = Some(format!("移走旧的 {item} 失败：{exc}"));
+                break;
+            }
+        }
+    }
+    if swap_error.is_none() {
+        for item in PROGRAM_ITEMS {
+            let from = stage.join(item);
+            if !from.exists() {
+                continue;
+            }
+            if let Err(exc) = std::fs::rename(&from, target.join(item)) {
+                swap_error = Some(format!("换入新的 {item} 失败：{exc}"));
+                break;
+            }
+        }
+    }
+    if let Some(exc) = swap_error {
+        for item in moved.iter().rev() {
+            let _ = std::fs::rename(backup.join(item), target.join(item));
+        }
+        let _ = std::fs::remove_dir_all(&stage);
+        let _ = std::fs::remove_dir_all(&backup);
+        return Err(format!("{exc}（已还原为原版本）"));
+    }
+    let _ = std::fs::remove_dir_all(&stage);
+    let _ = std::fs::remove_dir_all(&backup);
 
     let version = payload_version(&payload).unwrap_or_else(|| VERSION.to_string());
     let exe = target.join(EXE_NAME);

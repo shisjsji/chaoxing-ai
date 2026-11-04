@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<meta name="cx-token" content="{{ ui_token }}">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>超星 AI 答题</title>
   <link rel="icon" href="/static/favicon.ico" sizes="any">
@@ -109,6 +110,11 @@
           <button class="btn" id="btnExamRefresh"><span class="ni" data-icon="Refresh"></span>刷新考试列表</button>
           <button class="btn" id="btnExamClose" hidden><span class="ni" data-icon="Close"></span>关闭考场页面</button>
           <span class="hint" id="exam-hint" style="margin:0"></span>
+        </div>
+
+        <div class="row" style="margin-bottom:10px">
+          <input class="input" id="open-url" placeholder="在下方浏览器里打开其他页面（资料等），粘贴链接后点打开" style="flex:1">
+          <button class="btn" id="btnOpenUrl"><span class="ni" data-icon="ArrowUpRight"></span>打开</button>
         </div>
 
         <div class="notice" id="face-card" hidden>

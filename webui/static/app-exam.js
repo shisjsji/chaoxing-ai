@@ -98,9 +98,19 @@ function watchExamBrowser(group, item, btn) {
       clearInterval(examTimer); examTimer = null;
       $('exam-hint').textContent = '已进入考场，开始自动答题…';
       setMsg('已接手考试，正在答题', 'ok');
-      await post('/api/exam/autodrive', {course: (group && group.course) || ''});
+      try {
+        await post('/api/exam/autodrive', {course: (group && group.course) || ''});
+      } catch (err) {
+        // 这一步失败以前被空 catch 吞掉：界面停在「正在答题」，其实一题没答。
+        $('exam-hint').textContent = '自动作答没能开始';
+        setMsg('自动作答没能开始：' + err.message, 'err');
+        setTimeout(watchExamBrowser, 2000);
+        return;
+      }
       startExamPolling();
-    } catch (e) {}
+    } catch (e) {
+      $('exam-hint').textContent = '读取考场状态失败，正在重试…';
+    }
   }, 1000);
 }
 
@@ -178,6 +188,29 @@ $('feedback-send').onclick = async () => {
 };
 
 $('btnExamRefresh').onclick = loadExams;
+
+$('btnOpenUrl').onclick = async () => {
+  const input = $('open-url');
+  let url = (input.value || '').trim();
+  if (!url) {
+    setMsg('先把要打开的网址粘到左边输入框', 'err');
+    input.focus();
+    return;
+  }
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  flashIcon('btnOpenUrl', 'loader', 0);
+  try {
+    await syncExamStage(true);
+    const res = await post('/api/exam/browser', {url: url});
+    $('btnExamClose').hidden = !(res && res.embedded);
+    $('exam-hint').textContent = '已在下方的浏览器里打开';
+    setMsg('页面已打开，复制粘贴限制已解除', 'ok');
+    flashIcon('btnOpenUrl', 'success');
+  } catch (e) {
+    setMsg('打不开：' + e.message, 'err');
+    flashIcon('btnOpenUrl', 'failed');
+  }
+};
 $('btnExamClose').onclick = async () => {
   if ($('exam-hint').textContent.includes('答题中')
       && !confirm('正在自动答题，关掉会中断。确定关闭？')) return;

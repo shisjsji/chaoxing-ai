@@ -1118,6 +1118,11 @@ class Chaoxing:
         if self.tiku.DISABLE or not self.tiku:
             return StudyResult.SUCCESS
 
+        # 重做计数只对本章节有效：它是「这一章已经交过一次，重做时不再卡覆盖率」的
+        # 标记，必须每章清零。之前只在 __init__ 置 0，第 1 章重做过后，后面每章
+        # 覆盖率不足也会直接提交，交完不能改。
+        self.rollback_times = 0
+
         _session = SessionManager.get_session()
         _url = "https://mooc1.chaoxing.com/mooc-ans/api/work"
 

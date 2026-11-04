@@ -248,6 +248,15 @@ class Library:
                                     "UPDATE questions SET disputes=?, updated_at=? WHERE fingerprint=?",
                                     (disputes, now, fp),
                                 )
+                    elif cur_status == 2:
+                        # 已判错（人工在题库页标错、或连续两次冲突降级）不再被自动答案
+                        # 覆盖。以前这里无条件写回传入的 status=1，人工否掉的错答案
+                        # 会自己复活并被 lookup 当成已确认复用。平台公布的正确答案走
+                        # force_answer，不受这条限制。
+                        conn.execute(
+                            "UPDATE questions SET updated_at=? WHERE fingerprint=?",
+                            (now, fp),
+                        )
                     else:
                         conn.execute(
                             "UPDATE questions SET answer=?, answer_key=?, options=?, qtype=?,"

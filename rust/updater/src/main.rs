@@ -161,13 +161,18 @@ fn run(args: &Args) -> Result<(), String> {
         fs::remove_dir_all(&old).map_err(|e| format!("清理上次的备份失败：{e}"))?;
     }
     rename_with_retry(&dest, &old, log, "备份旧目录")?;
-    if let Err(exc) = fs::rename(&staged_internal, &dest)
-        .and_then(|_| fs::copy(&staged_exe, &exe_path).map(|_| ()))
-    {
+    if let Err(exc) = replace_tree(&staged_internal, &dest, &staged_exe, &exe_path) {
         note(log, &format!("替换失败，回滚中：{exc}"));
-        let _ = fs::remove_dir_all(&dest);
-        let _ = fs::rename(&old, &dest);
-        return Err(format!("替换失败：{exc}"));
+        // 回滚自己也要确认结果：dest 删不干净时 rename 会失败，这时
+        // _internal_old 是机器上唯一能用的副本，不能再被 cleanup 当垃圾删掉。
+        let reverted = fs::remove_dir_all(&dest).and_then(|_| fs::rename(&old, &dest));
+        return match reverted {
+            Ok(()) => Err(format!("替换失败：{exc}（已还原为原版本）")),
+            Err(back) => Err(format!(
+                "替换失败：{exc}；回滚也没成功：{back}（旧版本完整保留在 {}）",
+                old.display()
+            )),
+        };
     }
     note(log, "文件已替换");
 
@@ -181,8 +186,27 @@ fn run(args: &Args) -> Result<(), String> {
     Ok(())
 }
 
-fn cleanup(args: &Args) {
-    let _ = fs::remove_dir_all(args.app.join("_internal_old"));
+/// 换入新版本：先换 _internal，再用「临时名 + 改名」的方式换主程序，
+/// 中途失败不会留下半截的 exe。
+fn replace_tree(
+    staged_internal: &Path,
+    dest: &Path,
+    staged_exe: &Path,
+    exe_path: &Path,
+) -> Result<(), String> {
+    fs::rename(staged_internal, dest).map_err(|e| e.to_string())?;
+    let tmp = exe_path.with_extension("exe.new");
+    fs::copy(staged_exe, &tmp)
+        .and_then(|_| fs::rename(&tmp, exe_path))
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 收尾。成功才删备份：失败路径上 _internal_old 可能就是唯一能用的旧版本。
+fn cleanup(args: &Args, success: bool) {
+    if success {
+        let _ = fs::remove_dir_all(args.app.join("_internal_old"));
+    }
     let _ = fs::remove_dir_all(&args.stage);
     let _ = fs::remove_file(args.app.join("update_pending.json"));
     // 先解锁再启动：新进程看到锁会以为还在更新，直接退出
@@ -207,7 +231,7 @@ fn main() {
             let _ = fs::write(args.app.join("update_failed.txt"), failure);
         }
     }
-    cleanup(&args);
+    cleanup(&args, result.is_ok());
 
     if exe_path.exists() {
         let _ = Command::new(&exe_path).current_dir(&args.app).spawn();

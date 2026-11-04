@@ -670,7 +670,10 @@ class ExamSession:
     def final_submit(self) -> dict:
         """直接交卷（不提交具体题目）。"""
         blank = ExamQuestion(index=0, qid="", qtype="other", title="")
-        return self.submit(blank, "", final=True)
+        # 交卷和逐题提交打的是同一个接口，试卷页那批结构性字段（paperId、openc 等）
+        # 少一个平台就回「无效操作」，所以这里也必须带上。
+        return self.submit(blank, "", final=True,
+                           page_fields=form_payload(self.last_html))
 
 
 # ---------- 作答 ----------

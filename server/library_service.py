@@ -22,7 +22,10 @@ from flask import Flask, jsonify, request
 
 DB_PATH = os.environ.get("LIB_DB", "shared.db")
 RELEASE_DIR = os.environ.get("LIB_RELEASE_DIR", "/opt/apps/chaoxing-lib/releases")
-TOKEN = os.environ.get("LIB_TOKEN", "change-me")
+# 不配令牌就别跑：以前缺省是 "change-me"，等于对外开着一个所有人都知道的密码
+TOKEN = os.environ.get("LIB_TOKEN", "")
+if not TOKEN:
+    raise SystemExit("缺少 LIB_TOKEN：共享题库令牌必须显式配置，不再回退到默认值")
 PORT = int(os.environ.get("LIB_PORT", "5001"))
 
 # 每个用户标识每天最多提交多少条，防止刷库
@@ -240,6 +243,15 @@ def submit():
                 if seen >= PER_QUESTION_CAP:
                     # 这题票数已经够了，再收只会让统计变慢，也可能被拿来刷
                     continue
+                # 同一台设备对同一题只算一票。客户端超时会重试，服务端已入库但
+                # 响应丢了也会重发；以前每次重发都加权重，一台机器就能压过两个
+                # 不同用户的一致答案，还能把这题的名额吃光。
+                dup = conn.execute(
+                    "SELECT 1 FROM submissions WHERE fingerprint=? AND user_hash=? LIMIT 1",
+                    (fp, user_hash),
+                ).fetchone()
+                if dup:
+                    continue
 
                 answer_key = _normalize_answer(answer, qtype, options) or answer
 
@@ -277,6 +289,17 @@ def submit():
                 # 否则一张 60 分的卷子就能把错答案送进所有人的题库。
                 usable = best_key in high_keys or len(voters.get(best_key, ())) >= 2
                 status = 1 if usable else 0
+
+                # 已经确认的答案不接受单人改判：confidence 是客户端自封的，
+                # 伪造一个 high 就能覆盖全库答案、立刻发给所有人。要翻转必须有两个
+                # 不同用户一致，或者原答案本来就没确认过。
+                existing = conn.execute(
+                    "SELECT answer_key, status FROM answers WHERE fingerprint=?", (fp,)
+                ).fetchone()
+                if (existing and existing[1] == 1
+                        and (existing[0] or "") != best_key
+                        and len(voters.get(best_key, ())) < 2):
+                    continue
 
                 conn.execute(
                     "INSERT INTO answers(fingerprint,title,options,qtype,answer,answer_key,votes,"

@@ -113,6 +113,23 @@ class LibraryWriteTest(unittest.TestCase):
         self.assertEqual(self._row()[0], 2)
         self.assertIsNone(self.lib.lookup(self.fp))
 
+    def test_rejected_is_not_revived_by_ai(self):
+        """人工判错之后，AI/共享库的答案不能把它写回「已确认」。"""
+        self.lib.upsert(self.fp, "首都是？", OPTIONS, "single", "北京", status=1)
+        self.lib.reject(self.fp)
+        self.lib.upsert(self.fp, "首都是？", OPTIONS, "single", "上海", status=1,
+                        evidence="shared")
+        self.assertEqual(self._row()[0], 2)
+        self.assertIsNone(self.lib.lookup(self.fp))
+
+    def test_platform_answer_still_fixes_rejected(self):
+        """平台公布的正确答案是硬证据，判错也要能改回来。"""
+        self.lib.upsert(self.fp, "首都是？", OPTIONS, "single", "北京", status=1)
+        self.lib.reject(self.fp)
+        self.lib.force_answer(self.fp, "首都是？", OPTIONS, "single", "上海")
+        self.assertEqual(self._row()[0], 1)
+        self.assertEqual(self.lib.lookup(self.fp), "上海")
+
 
 class MigrationTest(unittest.TestCase):
     def test_old_database_gets_new_columns(self):
