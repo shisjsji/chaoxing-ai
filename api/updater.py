@@ -22,7 +22,7 @@ import requests
 
 from api.logger import logger
 
-APP_VERSION = "3.8.1"
+APP_VERSION = "3.8.2"
 APP_NAME = "超星AI答题"
 
 CHECK_TIMEOUT = 8
@@ -48,6 +48,10 @@ PS1_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.ps1")
 # 内置更新日志：断网时也能在界面里看到本版改了什么。
 # 新增版本时同步更新 CHANGELOG.md 与服务端 version.json 的 highlights。
 RELEASES = {
+    "3.8.2": [
+        "修界面上那块黑：内嵌浏览器窗口启动时会被挂进主窗口一次，隐藏逻辑只认「自己显示过的」，于是没加载页面的窗口留在界面上",
+        "现在按真实可见性兜底隐藏；考场页正常上报区域时照常显示",
+    ],
     "3.8.1": [
         "这一版全是 bug 修复，涉及分数、题库数据和安装安全，建议升级",
         "修「一次重做之后，后面每章覆盖率不够也直接提交」：重做计数改成只对本章有效",

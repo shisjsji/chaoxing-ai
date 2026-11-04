@@ -235,6 +235,15 @@ class Stage:
                         return
                     self._shown = False
                     self._applied = None
+                elif user32.IsWindowVisible(wintypes.HWND(hwnd)):
+                    # attach() 为了让 WinForms 把句柄建好，先 show() 过一次。
+                    # 那条路径不会把 _shown 置真，所以这里必须按真实可见性兜底：
+                    # 否则没人接管它，未加载页面的 WebView2 就一直是一块黑，
+                    # 盖在界面上，用户看到的就是页面下半截全黑。
+                    try:
+                        user32.ShowWindow(wintypes.HWND(hwnd), SW_HIDE)
+                    except Exception:
+                        return
                 continue
             if self._shown and rect == self._applied and _still_child(hwnd):
                 continue

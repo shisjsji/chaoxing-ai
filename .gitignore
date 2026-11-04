@@ -195,3 +195,7 @@ assets/tour/
 # 构建/调试临时产物
 _*.err
 _build_*.log
+
+# 运行期与备份产物
+_backup/
+ui.lock
