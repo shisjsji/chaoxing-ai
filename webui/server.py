@@ -10,6 +10,7 @@ import re
 import secrets
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import deque
@@ -72,6 +73,35 @@ def _guard_ui_token():
     return jsonify(ok=False, error="未授权的调用：缺少界面令牌"), 403
 
 _lock = threading.Lock()
+
+
+# 拉考试串行化：共用 requests.Session 时不允许多轮同时跑
+_exam_pull_lock = threading.Lock()
+
+
+def _run_with_deadline(work, seconds: float):
+    """把可能卡住的活放到子线程里做，超时就报错。
+
+    登录、拉课程、读窗口 cookie 这几步都要连外网或跟 WebView2 打交道，
+    一旦对端不响应，界面就会一直转圈。宁可回一句「请稍后重试」，
+    也不能让用户干等。
+    """
+    box: dict = {}
+
+    def run() -> None:
+        try:
+            box["value"] = work()
+        except Exception as exc:  # noqa: BLE001 - 原样抛回调用方
+            box["error"] = exc
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(seconds)
+    if thread.is_alive():
+        raise TimeoutError(f"等了 {int(seconds)} 秒还没有结果，请稍后重试")
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
 # 更新进度：下载在后台线程跑，前端轮询这个状态画进度条
 _update_state = {"stage": "idle", "percent": 0, "done": 0, "total": 0,
                  "message": "", "error": "", "version": ""}
@@ -120,7 +150,7 @@ def _write_config(cfg: dict, path: Path | None = None, with_secrets: bool = Fals
             parser[section] = {}
     parser["common"].update(
         {
-            "use_cookies": "false",
+            "use_cookies": "true",
             "username": str(cfg.get("username", "")).strip(),
             "password": str(cfg.get("password", "")) if with_secrets else "",
             "course_list": ",".join(str(x) for x in (cfg.get("course_list") or [])),
@@ -751,52 +781,185 @@ def api_test_llm():
 
 @app.post("/api/exams")
 def api_exams():
-    """列出所有课程的考试。"""
-    cfg = _fill_secrets(request.get_json(force=True, silent=True) or {})
-    username = str(cfg.get("username", "")).strip()
-    password = str(cfg.get("password", ""))
-    if not username or not password:
-        return jsonify(ok=False, error="请先在设置里填写学习通账号和密码"), 400
+    """列出所有课程的考试。
+
+    不再用账号密码自动登录：登录交给用户在考试页的内嵌窗口里手动完成
+    （账号密码自己输、真人验证自己过），这里只复用那份登录态。
+    """
+    if not (ROOT / "cookies.txt").exists():
+        return jsonify(ok=False,
+                       error="还没有登录：请点考试页的「登录学习通」，"
+                             "在窗口里登录一次再来拉取"), 400
     try:
-        from api.base import Account, Chaoxing, SessionManager
-        from api.answer import DummyTiku
-        from api.exam import list_exams
-
-        chaoxing = Chaoxing(
-            account=Account(username, password),
-            tiku=DummyTiku(),
-            query_delay=0,
-            work_max_retries=0,
-            work_redo_enabled=False,
-        )
-        state = chaoxing.login(login_with_cookies=False)
-        if not state.get("status"):
-            return jsonify(ok=False, error=f"登录失败：{state.get('msg')}"), 400
-
-        session = SessionManager.get_session()
-        courses = chaoxing.get_course_list()
-        result = []
-        for course in courses:
-            try:
-                items = list_exams(session, course)
-            except Exception:
-                items = []
-            if items:
-                result.append({
-                    "course": course.get("title", ""),
-                    "courseId": str(course.get("courseId", "")),
-                    "clazzId": str(course.get("clazzId", "")),
-                    "cpi": str(course.get("cpi", "")),
-                    "items": [
-                        {"exam_id": it.exam_id, "enc_task": it.enc_task, "name": it.name,
-                         "status": it.status, "expire": it.expire_time}
-                        for it in items
-                    ],
-                })
-        total = sum(len(c["items"]) for c in result)
-        return jsonify(ok=True, courses=result, total=total)
+        return jsonify(_run_with_deadline(_pull_exams, 150))
+    except TimeoutError as exc:
+        return jsonify(ok=False, error=str(exc)), 504
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
     except Exception as exc:
         return jsonify(ok=False, error=f"{type(exc).__name__}: {exc}"), 500
+
+
+def _pull_exams() -> dict:
+    """读考试列表。
+
+    走子进程：主进程里有 WebView2 和嵌入窗口的消息循环，Python 线程常被挤住，
+    同样的请求在主进程里要几十秒、在干净进程里一两秒就回来了。
+    """
+    if not _exam_pull_lock.acquire(timeout=15):
+        raise TimeoutError("上一轮还在读考试列表，等几秒再试")
+    try:
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        out_path = Path(tempfile.gettempdir()) / "chaoxing_exam_list.json"
+        try:
+            out_path.unlink()
+        except OSError:
+            pass
+        if FROZEN:
+            cmd = [sys.executable, "--exam-list", str(out_path)]
+        else:
+            cmd = [str(PYTHON), str(ROOT / "desktop.py"), "--exam-list", str(out_path)]
+        subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", env=env, timeout=120)
+        if not out_path.exists():
+            raise RuntimeError("读取考试列表失败：子进程没有写出结果，请重试")
+        return json.loads(out_path.read_text(encoding="utf-8"))
+    finally:
+        _exam_pull_lock.release()
+
+
+# 登录页：让用户在内嵌窗口里自己输账号密码、自己过验证码/人脸
+LOGIN_URL = ("https://passport2.chaoxing.com/login"
+             "?fid=&refer=https%3A%2F%2Fi.chaoxing.com")
+
+
+@app.post("/api/login/open")
+def api_login_open():
+    """把考场窗口当登录窗口用，打开学习通登录页。
+
+    程序不替用户填任何东西：验证码和人脸必须人来过，这里只负责把窗口打开。
+    """
+    win = _exam_browser.get("window")
+    if win is None:
+        return jsonify(ok=False, error="登录窗口不可用，请重启程序"), 400
+    try:
+        win.load_url(LOGIN_URL)
+    except Exception as exc:
+        return jsonify(ok=False, error=f"打不开登录页：{exc}"), 500
+    try:
+        placed = exam_embed.get("exam").set_active(True)
+    except Exception:
+        placed = False
+    if not placed:
+        try:
+            win.show()
+        except Exception:
+            pass
+    return jsonify(ok=True, embedded=placed,
+                   message="登录窗口已打开：输账号密码、完成验证后点「我已登录」")
+
+
+def _probe_login(cookies: dict) -> dict:
+    """用一份独立会话验证这组 cookie 还有效。
+
+    刻意不碰 SessionManager / Chaoxing：那两个是全局单例，登录流程一跑就会
+    和正在进行的拉取互相等，界面就卡住了。
+    """
+    import requests
+
+    if not (cookies.get("_uid") or cookies.get("UID")):
+        return {"status": False, "msg": "cookie 里没有登录标识"}
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/118.0.0.0 Safari/537.36",
+    })
+    session.cookies.update(cookies)
+    try:
+        resp = session.post(
+            "https://mooc2-ans.chaoxing.com/mooc2-ans/visit/courselistdata",
+            data={"courseType": 1, "courseFolderId": 0, "query": "",
+                  "superstarClass": 0},
+            timeout=8,
+        )
+    except Exception as exc:
+        return {"status": False, "msg": f"{type(exc).__name__}: {exc}"}
+    if resp.status_code != 200:
+        return {"status": False, "msg": f"平台返回 {resp.status_code}"}
+    return {"status": True, "msg": "登录成功"}
+
+
+@app.post("/api/login/collect")
+def api_login_collect():
+    """用户点「我已登录」：把窗口里的登录态取出来存成 cookies.txt 并校验。"""
+    win = _exam_browser.get("window")
+    if win is None:
+        return jsonify(ok=False, error="登录窗口不可用，请重启程序"), 400
+
+    from api import browser_unlock
+
+    try:
+        cookies = _run_with_deadline(lambda: browser_unlock.read_cookies(win), 30)
+    except TimeoutError as exc:
+        return jsonify(ok=False, error=f"读取窗口登录状态超时：{exc}"), 504
+    if not cookies:
+        return jsonify(ok=False, error="没读到登录信息，请先在窗口里登录再点一次"), 400
+    if not (cookies.get("_uid") or cookies.get("UID")):
+        return jsonify(ok=False,
+                       error="看起来还没登录成功：窗口里看不到登录后的标识"), 400
+
+    text = ";".join(f"{name}={value}" for name, value in cookies.items())
+    # 先把窗口收起来：登录页一直在渲染会占满 GIL，后台的拉取会被拖慢几十倍
+    try:
+        exam_embed.get("exam").set_active(False)
+    except Exception:
+        pass
+    try:
+        (ROOT / "cookies.txt").write_text(text, encoding="utf-8")
+    except OSError as exc:
+        return jsonify(ok=False, error=f"保存登录状态失败：{exc}"), 500
+    try:
+        from api.base import SessionManager
+
+        SessionManager.get_instance()._session.cookies.update(cookies)
+    except Exception:
+        pass
+
+    # 之后统一走 cookie 登录：只改这一个键，配置里其他内容原样保留
+    if CONFIG_PATH.exists():
+        try:
+            parser = ConfigParser(interpolation=None)
+            parser.read(CONFIG_PATH, encoding="utf-8")
+            if "common" not in parser:
+                parser["common"] = {}
+            parser["common"]["use_cookies"] = "true"
+            with open(CONFIG_PATH, "w", encoding="utf-8") as fp:
+                parser.write(fp)
+        except Exception as exc:
+            _append_log(f"写入 use_cookies 失败：{exc}", kind="ui")
+
+    # 校验登录态：只用一份独立会话发一个轻量请求，不走 Chaoxing/SessionManager。
+    # 以前这里跑一整套 login(login_with_cookies=True)，会和正在跑的拉取互相等，
+    # 表现为点「我已登录」之后界面一直没反应。
+    try:
+        state = _run_with_deadline(lambda: _probe_login(cookies), 30)
+    except TimeoutError as exc:
+        return jsonify(ok=False, error=f"校验登录状态超时：{exc}"), 504
+    except Exception as exc:
+        return jsonify(ok=False, error=f"校验登录状态失败：{exc}"), 500
+    if not state.get("status"):
+        return jsonify(ok=False,
+                       error=f"登录状态用不了：{state.get('msg')}"), 400
+
+    _append_log("已读取学习通登录状态", kind="ui")
+    # 登录完了就把窗口收起来，别挡着页面
+    try:
+        exam_embed.get("exam").set_active(False)
+    except Exception:
+        pass
+    return jsonify(ok=True, message="登录状态已保存，现在可以拉取考试、开始刷课了")
 
 
 @app.post("/api/exam/run")

@@ -60,7 +60,8 @@ function switchPage(page) {
     if (page === 'library') loadLibrary();
     if (page === 'agent') loadAgent();
     if (page === 'exams') {
-      if (!examCourses.length) loadExams();
+      // 不在这里自动拉列表：进页面时登录窗口可能正在加载，两个请求撞一起
+      // 会互相拖住（表现为「正在读取」一直不动）。点刷新或登录完成后再拉。
       refreshExamCloseBtn();
     }
   };

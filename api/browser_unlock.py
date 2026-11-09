@@ -264,3 +264,80 @@ def prepare(win, label: str) -> None:
     """
     install_later(win, label)
     sync_cookies_later(win, label, tries=12)
+
+
+# ---------- 反向：把用户在窗口里登录出来的 cookie 取回来 ----------
+
+def read_cookies(win, timeout: float = 4.0, attempts: int = 3,
+                 domains=("chaoxing",)) -> dict:
+    """把窗口里的 cookie 全取出来，返回 name -> value。
+
+    登录是用户自己在窗口里完成的（账号密码、验证码、人脸都由人来过），
+    这里只负责把结果搬给 requests 那套用。
+
+    取法走 CDP 的 Network.getAllCookies：直接读 CoreWebView2Cookie 的属性
+    在 pythonnet 下会抛 ICoreWebView2Cookie 的 InvalidCastException（COM 接口
+    跨运行时转换失败），CDP 返回的是一段 JSON，最稳。
+
+    登录页刚提交时窗口正忙，CDP 调用可能迟迟不回来，所以每次只等几秒，
+    拿不到就重来一次；三次都拿不到才放弃。
+    """
+    import json
+
+    form = _form_of(win)
+    core = _core_of(form)
+    if core is None:
+        return {}
+
+    for attempt in range(1, max(1, attempts) + 1):
+        box = {"task": None}
+
+        def start():
+            try:
+                box["task"] = core.CallDevToolsProtocolMethodAsync(
+                    "Network.getAllCookies", "{}")
+            except Exception as exc:
+                logger.debug(f"发起取 cookie 失败：{exc}")
+
+        _on_ui(form, start)
+        task = box["task"]
+        if task is None:
+            return {}
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                if task.IsCompleted:
+                    break
+            except Exception:
+                return {}
+            time.sleep(0.1)
+        try:
+            if not task.IsCompleted:
+                logger.debug(f"第 {attempt} 次取 cookie 超时，重试")
+                continue
+            raw = task.Result
+        except Exception as exc:
+            logger.debug(f"读取 cookie 结果失败：{exc}")
+            continue
+
+        try:
+            data = json.loads(str(raw) or "{}")
+        except Exception as exc:
+            logger.debug(f"解析 cookie 失败：{exc}")
+            continue
+
+        out = {}
+        for item in data.get("cookies") or []:
+            try:
+                domain = str(item.get("domain") or "")
+                if domains and not any(d in domain for d in domains):
+                    continue
+                name = str(item.get("name") or "")
+                if name:
+                    out[name] = str(item.get("value") or "")
+            except Exception:
+                continue
+        logger.debug(f"从窗口取到 {len(out)} 条 cookie（第 {attempt} 次）")
+        if out:
+            return out
+    return {}

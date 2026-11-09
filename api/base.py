@@ -48,15 +48,21 @@ class SessionManager:
         return cls._instance
 
     def __init__(self):
+        # 单例：__new__ 返回已有实例后 Python 还会再调一次 __init__，
+        # 以前每次 get_instance() 都把整个 session 重建一遍（适配器重挂、
+        # cookie 从文件重读），并发时几个线程会互相踩，表现为「一直卡住」。
+        if getattr(self, "_ready", False):
+            return
         self._session = requests.Session()
-        self._session.mount("https://", HTTPAdapter(max_retries=10))
-        self._session.mount("http://", HTTPAdapter(max_retries=10))
+        self._session.mount("https://", HTTPAdapter(max_retries=2))
+        self._session.mount("http://", HTTPAdapter(max_retries=2))
         self._session.request = functools.partial(self._session.request, timeout=5)
         # For debug purposes
         # self._session.verify=False
         self._session.headers.clear()
         self._session.headers.update(gc.HEADERS)
         self._session.cookies.update(use_cookies())
+        self._ready = True
 
     @classmethod
     def get_instance(cls) -> Self:

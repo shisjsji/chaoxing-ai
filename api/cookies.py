@@ -21,7 +21,11 @@ def save_cookies(session: requests.Session):
 
 
 def use_cookies() -> dict:
-    with cookie_lock:
+    # 等不到锁就返回空，绝不能无限等：读 cookie 是每个请求都要走的路，
+    # 卡在这里会让整个界面停在「正在读取…」
+    if not cookie_lock.acquire(timeout=2):
+        return {}
+    try:
         if not os.path.exists(gc.COOKIES_PATH):
             return {}
 
@@ -42,3 +46,5 @@ def use_cookies() -> dict:
             return {}
 
         return cookies
+    finally:
+        cookie_lock.release()

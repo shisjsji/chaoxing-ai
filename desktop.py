@@ -401,6 +401,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if "--exam-list" in sys.argv:
+        # 子进程模式：在干净进程里读考试列表，结果打一行 JSON 回去
+        from api.exam_list import main as exam_list_main
+
+        sys.exit(exam_list_main())
     if "--run-task" in sys.argv:
         run_task()
     else:

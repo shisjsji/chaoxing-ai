@@ -1,16 +1,28 @@
 /* 考试列表、考场浏览器、自动作答 */
 
 /* ---------- 考试 ---------- */
+/* 同一时间只发一轮请求：切页和点刷新很容易同时触发，
+   两份并发拉取会互相等，界面就一直显示「正在读取」。 */
+let examsLoading = false;
+
 async function loadExams() {
+  if (examsLoading) return;
+  examsLoading = true;
+  try {
+    await loadExamsOnce();
+  } finally {
+    examsLoading = false;
+  }
+}
+
+async function loadExamsOnce() {
   const box = $('exam-list');
   box.innerHTML = '';
   box.appendChild(emptyState('正在读取考试列表…'));
   $('exam-hint').textContent = '';
   try {
-    const r = await post('/api/exams', {
-      username: $('username').value.trim(),
-      password: $('password').value
-    });
+    // 不再往这里塞账号密码：列表用的是「登录学习通」保存下来的那份登录态
+    const r = await post('/api/exams', {});
     examCourses = r.courses || [];
     if (!examCourses.length) {
       box.innerHTML = '';
@@ -188,6 +200,35 @@ $('feedback-send').onclick = async () => {
 };
 
 $('btnExamRefresh').onclick = loadExams;
+
+/* 登录：程序只负责开窗口，账号密码和验证码都由用户自己来 */
+$('btnLoginOpen').onclick = async () => {
+  flashIcon('btnLoginOpen', 'loader', 0);
+  try {
+    const r = await post('/api/login/open', {});
+    $('login-hint').textContent = r.message
+      || '在下方窗口里完成登录，然后点「我已登录，读取状态」';
+    flashIcon('btnLoginOpen', 'success');
+    setMsg('登录窗口已打开，请在下方完成登录', 'ok');
+  } catch (e) {
+    $('login-hint').textContent = '打不开登录页：' + e.message;
+    flashIcon('btnLoginOpen', 'failed');
+  }
+};
+
+$('btnLoginDone').onclick = async () => {
+  flashIcon('btnLoginDone', 'loader', 0);
+  try {
+    const r = await post('/api/login/collect', {});
+    $('login-hint').textContent = r.message || '登录状态已保存';
+    flashIcon('btnLoginDone', 'success');
+    setMsg(r.message || '登录状态已保存', 'ok');
+    await loadExams();
+  } catch (e) {
+    $('login-hint').textContent = '读取登录状态失败：' + e.message;
+    flashIcon('btnLoginDone', 'failed');
+  }
+};
 
 $('btnOpenUrl').onclick = async () => {
   const input = $('open-url');

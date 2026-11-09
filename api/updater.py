@@ -22,7 +22,7 @@ import requests
 
 from api.logger import logger
 
-APP_VERSION = "3.8.2"
+APP_VERSION = "3.8.3"
 APP_NAME = "超星AI答题"
 
 CHECK_TIMEOUT = 8
@@ -48,6 +48,12 @@ PS1_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.ps1")
 # 内置更新日志：断网时也能在界面里看到本版改了什么。
 # 新增版本时同步更新 CHANGELOG.md 与服务端 version.json 的 highlights。
 RELEASES = {
+    "3.8.3": [
+        "登录改成手动：考试页点「登录学习通」开窗口，账号密码和验证码都由你自己来",
+        "登录完成后点「我已登录，读取状态」，程序把登录态存下来，拉考试/刷课/作答都用它",
+        "拉取考试不再用账号密码自动登录；没登录会直接提示先去登录",
+        "刷课会话也切到 cookie 登录，不再依赖保存的密码",
+    ],
     "3.8.2": [
         "修界面上那块黑：内嵌浏览器窗口启动时会被挂进主窗口一次，隐藏逻辑只认「自己显示过的」，于是没加载页面的窗口留在界面上",
         "现在按真实可见性兜底隐藏；考场页正常上报区域时照常显示",
