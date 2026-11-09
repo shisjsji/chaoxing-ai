@@ -666,8 +666,29 @@ def run_pass(win, log=print, rounds: int = 3, deadline_minutes: float = 25,
             break
         card = read_card(win)
         if not card.get("ok"):
-            # 读不到卡片说明还没进考卷或页面没加载完。
-            # 这时候 left 还是初始值 0，不能拿它当「全部答完」。
+            # 刚点完「开始」时卷面常常还在渲染，答题卡也还没进 DOM。
+            # 先等题目区出现，再读两次，别一秒就判死。
+            if wait_ready(win, 15):
+                for _ in range(3):
+                    _t.sleep(2.0)
+                    card = read_card(win)
+                    if card.get("ok"):
+                        break
+        if not card.get("ok"):
+            # 读不到卡片说明还没进考卷或页面没加载完，也可能是这个卷面模板
+            # 没有答题卡。把页面实际有什么打进日志，下一次才不会瞎猜。
+            probe = _js(win, """(function(){
+              function n(s){try{return document.querySelectorAll(s).length}catch(e){return -1}}
+              return JSON.stringify({
+                answerSheet: n('.answerSheetBox li.nav-revise'),
+                navRevise: n('li.nav-revise'),
+                questionWrap: n('.questionWrap'),
+                questionLi: n('.questionLi'),
+                nextBtn: n('#nextQuestion'),
+                tip: (document.title||'').slice(0,40)
+              });
+            })()""", timeout=6.0)
+            log(f"页面元素统计：{probe}")
             stats["error"] = "读不到答题卡，可能还没进入考卷或页面没加载完"
             log(stats["error"] + "，停止")
             break
