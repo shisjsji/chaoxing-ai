@@ -32,6 +32,12 @@ user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int,
 user32.SetWindowPos.restype = wintypes.BOOL
 user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
 user32.ShowWindow.restype = wintypes.BOOL
+user32.GetParent.argtypes = [wintypes.HWND]
+user32.GetParent.restype = wintypes.HWND
+user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+user32.GetWindowRect.restype = wintypes.BOOL
+user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
+user32.ClientToScreen.restype = wintypes.BOOL
 
 GWL_STYLE = -16
 WS_CHILD = 0x40000000
@@ -88,6 +94,21 @@ def _make_child(hwnd: int, tries: int = 6) -> bool:
 def _still_child(hwnd: int) -> bool:
     style = _GetWindowLong(wintypes.HWND(hwnd), GWL_STYLE)
     return bool(style & WS_CHILD) and not (style & _POPUP_BITS)
+
+
+def _client_rect(hwnd: int):
+    """子窗口相对父客户区的位置和大小，用来核对「摆没摆在该在的地方」。"""
+    try:
+        rect = wintypes.RECT()
+        if not user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rect)):
+            return None
+        origin = wintypes.POINT(0, 0)
+        user32.ClientToScreen(wintypes.HWND(user32.GetParent(wintypes.HWND(hwnd))),
+                              ctypes.byref(origin))
+        return (rect.left - origin.x, rect.top - origin.y,
+                rect.right - rect.left, rect.bottom - rect.top)
+    except Exception:
+        return None
 
 
 class Stage:
@@ -248,7 +269,10 @@ class Stage:
                         return
                 continue
             if self._shown and rect == self._applied and _still_child(hwnd):
-                continue
+                # 位置和样式都对，但窗口可能被别的东西挪走了（用户拖动主窗口、
+                # WinForms 重排）。核对一次实际位置，不对就重新摆。
+                if _client_rect(hwnd) == (rect[0], rect[1], rect[2], rect[3]):
+                    continue
             if not _still_child(hwnd):
                 try:
                     _make_child(hwnd)

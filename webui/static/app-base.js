@@ -69,7 +69,7 @@ function switchPage(page) {
   // 过渡动画期间页面带着位移，这时候量出来的坐标是偏的，
   // 原生窗口照着摆就会漂到别处。所以动画没结束不上报坐标。
   const finish = () => {
-    vtBusy = false;
+    setVtBusy(false);
     queueExamSync(60);
   };
 
@@ -77,7 +77,7 @@ function switchPage(page) {
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (VT_READY && !calm) {
     try {
-      vtBusy = true;
+      setVtBusy(true);
       const t = document.startViewTransition(apply);
       if (t && t.finished && t.finished.then) {
         t.finished.then(finish).catch(finish);
@@ -86,7 +86,7 @@ function switchPage(page) {
       }
       return;
     } catch (e) {
-      vtBusy = false;
+      setVtBusy(false);
     }
   }
   apply();
@@ -98,6 +98,21 @@ let stageSyncTimer = 0;
 // 换页过渡进行中：这段时间量出来的位置不可信
 let vtBusy = false;
 let lastStageBox = '';
+// 过渡动画的 Promise 在 WebView2 里偶发不 resolve。vtBusy 一旦卡在 true，
+// 坐标就再也不上报——表现为「拖一下窗口，考场窗口停在老位置」。
+// 所以设一个兜底，最多 900ms 一定放行。
+let vtWatchdog = 0;
+
+function setVtBusy(flag) {
+  vtBusy = flag;
+  clearTimeout(vtWatchdog);
+  if (flag) {
+    vtWatchdog = setTimeout(() => {
+      vtBusy = false;
+      queueExamSync(60);
+    }, 900);
+  }
+}
 
 function examStageBox() {
   const stage = $('examStage');

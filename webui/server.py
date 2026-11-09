@@ -1041,6 +1041,16 @@ def api_update_check():
             _pending_update.update(url=str(result.get("url") or ""),
                                    sha256=str(result.get("sha256") or ""),
                                    version=str(result.get("version") or ""))
+        # 服务端版本变了就把上次下载的包作废：留着它只会让「立即重启」装回旧版本
+        try:
+            from api.updater import clear_pending, load_pending
+
+            pending = load_pending()
+            latest = str(result.get("version") or "")
+            if pending and latest and str(pending.get("version") or "") != latest:
+                clear_pending()
+        except Exception:
+            pass
         return jsonify(result)
     except Exception as exc:
         return jsonify(ok=False, error=f"{type(exc).__name__}: {exc}"), 500
@@ -1119,13 +1129,26 @@ def _run_update(url: str, sha: str, version: str) -> None:
 @app.post("/api/update/restart")
 def api_update_restart():
     """用户点「立即重启」后才真正替换并重启。"""
-    from api.updater import apply_and_restart, load_pending
+    from api.updater import apply_and_restart, clear_pending, load_pending
 
     pending = load_pending()
     if not pending:
         with _lock:
             _update_state.update(stage="idle", percent=0, message="", error="")
         return jsonify(ok=False, error="没有已下载的更新包，请重新检查更新"), 400
+
+    # 已下载的包必须比当前版本新，否则会陷入
+    # 「提示有新版本 → 装完还是旧版 → 又提示」的死循环。
+    from api.updater import _newer
+
+    pending_version = str(pending.get("version") or "")
+    if pending_version and not _newer(pending_version, _app_version()):
+        clear_pending()
+        with _lock:
+            _update_state.update(stage="idle", percent=0, message="", error="")
+        return jsonify(ok=False,
+                       error=f"之前下载的 {pending_version} 不比当前版本新，"
+                             f"请重新点「检查更新」下载最新版"), 409
 
     with _lock:
         if _update_state["stage"] in ("preparing", "restarting"):
