@@ -218,6 +218,7 @@ $('btnLoginOpen').onclick = async () => {
 
 $('btnLoginDone').onclick = async () => {
   flashIcon('btnLoginDone', 'loader', 0);
+  $('login-hint').textContent = '正在读取窗口里的登录状态…';
   try {
     const r = await post('/api/login/collect', {});
     $('login-hint').textContent = r.message || '登录状态已保存';

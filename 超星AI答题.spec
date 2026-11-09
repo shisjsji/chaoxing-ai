@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('webui/templates', 'webui/templates'), ('webui/static', 'webui/static'), ('config_template.ini', '.'), ('resource', 'resource')]
 binaries = []
-hiddenimports = ['main', 'webui.server', 'pystray', 'PIL', 'api.exam']
+hiddenimports = ['main', 'webui.server', 'pystray', 'PIL', 'api.exam', 'api.exam_list']
 tmp_ret = collect_all('ddddocr')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('onnxruntime')

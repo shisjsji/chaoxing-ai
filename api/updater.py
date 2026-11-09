@@ -22,7 +22,7 @@ import requests
 
 from api.logger import logger
 
-APP_VERSION = "3.8.3"
+APP_VERSION = "3.8.4"
 APP_NAME = "超星AI答题"
 
 CHECK_TIMEOUT = 8
@@ -48,6 +48,10 @@ PS1_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.ps1")
 # 内置更新日志：断网时也能在界面里看到本版改了什么。
 # 新增版本时同步更新 CHANGELOG.md 与服务端 version.json 的 highlights。
 RELEASES = {
+    "3.8.4": [
+        "修 3.8.3 里考试列表还是拉不出来：拉列表的子进程模块没打进安装包，一启动就退出",
+        "模块已补进包内，失败也会写明原因，不会再让界面干等",
+    ],
     "3.8.3": [
         "登录改成手动：考试页点「登录学习通」开窗口，账号密码和验证码都由你自己来",
         "登录完成后点「我已登录，读取状态」，程序把登录态存下来，拉考试/刷课/作答都用它",

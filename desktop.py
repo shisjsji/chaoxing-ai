@@ -402,10 +402,26 @@ def main() -> None:
 
 if __name__ == "__main__":
     if "--exam-list" in sys.argv:
-        # 子进程模式：在干净进程里读考试列表，结果打一行 JSON 回去
-        from api.exam_list import main as exam_list_main
+        # 子进程模式：在干净进程里读考试列表，结果写到指定文件带回去
+        # （打包版是窗口程序，没有 stdout 可用）
+        index = sys.argv.index("--exam-list")
+        out_path = sys.argv[index + 1] if len(sys.argv) > index + 1 else ""
+        try:
+            from api.exam_list import main as exam_list_main
 
-        sys.exit(exam_list_main())
+            sys.exit(exam_list_main(out_path))
+        except Exception as exc:
+            import json as _json
+
+            payload = {"ok": False,
+                       "error": f"考试列表子进程启动失败：{type(exc).__name__}: {exc}"}
+            if out_path:
+                try:
+                    with open(out_path, "w", encoding="utf-8") as fp:
+                        fp.write(_json.dumps(payload, ensure_ascii=False))
+                except OSError:
+                    pass
+            sys.exit(1)
     if "--run-task" in sys.argv:
         run_task()
     else:

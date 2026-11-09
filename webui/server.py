@@ -905,6 +905,23 @@ def api_login_collect():
     except TimeoutError as exc:
         return jsonify(ok=False, error=f"读取窗口登录状态超时：{exc}"), 504
     if not cookies:
+        # 窗口里没读到（CDP 偶尔会卡住）。这时只要本地存着的登录态还有效，
+        # 就不该算失败——用户要的是「能拉列表」，不是「必须读到窗口」。
+        try:
+            from api.cookies import use_cookies
+
+            saved = use_cookies()
+        except Exception:
+            saved = {}
+        if saved:
+            try:
+                state = _run_with_deadline(lambda: _probe_login(saved), 25)
+            except Exception:
+                state = {"status": False}
+            if state.get("status"):
+                return jsonify(
+                    ok=True,
+                    message="窗口里没读到新的登录态，但本地保存的登录态仍然有效，可以直接拉取")
         return jsonify(ok=False, error="没读到登录信息，请先在窗口里登录再点一次"), 400
     if not (cookies.get("_uid") or cookies.get("UID")):
         return jsonify(ok=False,
