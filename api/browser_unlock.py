@@ -268,6 +268,49 @@ def prepare(win, label: str) -> None:
 
 # ---------- 反向：把用户在窗口里登录出来的 cookie 取回来 ----------
 
+def clear_cookies(win, timeout: float = 8.0) -> bool:
+    """清空窗口里的 cookie。
+
+    换账号必须先清：WebView2 有自己独立的 cookie 库，不清的话
+    登录页会直接以旧账号登进去，用户以为换成了新账号，实际还是旧的。
+    """
+    form = _form_of(win)
+    core = _core_of(form)
+    if core is None:
+        return False
+    box = {"task": None}
+
+    def start():
+        try:
+            box["task"] = core.CallDevToolsProtocolMethodAsync(
+                "Network.clearBrowserCookies", "{}")
+        except Exception as exc:
+            logger.debug(f"发起清 cookie 失败：{exc}")
+
+    _on_ui(form, start)
+    task = box["task"]
+    if task is None:
+        return False
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if task.IsCompleted:
+                break
+        except Exception:
+            return False
+        time.sleep(0.1)
+    try:
+        if not task.IsCompleted:
+            logger.debug("清 cookie 超时")
+            return False
+        task.Result
+    except Exception as exc:
+        logger.debug(f"清 cookie 失败：{exc}")
+        return False
+    logger.info("已清空窗口里的 cookie")
+    return True
+
+
 def read_cookies(win, timeout: float = 4.0, attempts: int = 3,
                  domains=("chaoxing",)) -> dict:
     """把窗口里的 cookie 全取出来，返回 name -> value。

@@ -800,31 +800,41 @@ def api_exams():
         return jsonify(ok=False, error=f"{type(exc).__name__}: {exc}"), 500
 
 
-def _pull_exams() -> dict:
-    """读考试列表。
+def _run_child(flag: str, tag: str, timeout: float) -> dict:
+    """在干净子进程里跑一件事，结果从临时文件读回来。
 
-    走子进程：主进程里有 WebView2 和嵌入窗口的消息循环，Python 线程常被挤住，
-    同样的请求在主进程里要几十秒、在干净进程里一两秒就回来了。
+    主进程里有 WebView2 的消息循环，Python 线程常被挤住；同样的活放子进程里
+    一两秒就完事。打包版是窗口程序没有 stdout，所以用文件交接。
     """
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    out_path = Path(tempfile.gettempdir()) / f"chaoxing_{tag}.json"
+    try:
+        out_path.unlink()
+    except OSError:
+        pass
+    if FROZEN:
+        cmd = [sys.executable, flag, str(out_path)]
+    else:
+        cmd = [str(PYTHON), str(ROOT / "desktop.py"), flag, str(out_path)]
+    subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True,
+                   encoding="utf-8", errors="replace", env=env, timeout=timeout)
+    if not out_path.exists():
+        raise RuntimeError("子进程没有写出结果，请重试")
+    return json.loads(out_path.read_text(encoding="utf-8"))
+
+
+def _whoami() -> dict:
+    """当前 cookies.txt 属于哪个账号。"""
+    return _run_child("--whoami", "whoami", 60)
+
+
+def _pull_exams() -> dict:
+    """读考试列表。"""
     if not _exam_pull_lock.acquire(timeout=15):
         raise TimeoutError("上一轮还在读考试列表，等几秒再试")
     try:
-        env = os.environ.copy()
-        env["PYTHONIOENCODING"] = "utf-8"
-        out_path = Path(tempfile.gettempdir()) / "chaoxing_exam_list.json"
-        try:
-            out_path.unlink()
-        except OSError:
-            pass
-        if FROZEN:
-            cmd = [sys.executable, "--exam-list", str(out_path)]
-        else:
-            cmd = [str(PYTHON), str(ROOT / "desktop.py"), "--exam-list", str(out_path)]
-        subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", env=env, timeout=120)
-        if not out_path.exists():
-            raise RuntimeError("读取考试列表失败：子进程没有写出结果，请重试")
-        return json.loads(out_path.read_text(encoding="utf-8"))
+        return _run_child("--exam-list", "exam_list", 120)
     finally:
         _exam_pull_lock.release()
 
@@ -843,6 +853,24 @@ def api_login_open():
     win = _exam_browser.get("window")
     if win is None:
         return jsonify(ok=False, error="登录窗口不可用，请重启程序"), 400
+
+    from api import browser_unlock
+
+    # 换账号必须先清干净：本地 cookies.txt 和浏览器自己的 cookie 库
+    # 任何一处留着旧账号，登录页就会直接以旧账号进去，用户以为换了其实没换。
+    try:
+        (ROOT / "cookies.txt").unlink()
+    except OSError:
+        pass
+    try:
+        (ROOT / "login.json").unlink()
+    except OSError:
+        pass
+    try:
+        _run_with_deadline(lambda: browser_unlock.clear_cookies(win), 20)
+    except Exception as exc:
+        _append_log(f"清空旧登录态失败（继续打开登录页）：{exc}", kind="ui")
+
     try:
         win.load_url(LOGIN_URL)
     except Exception as exc:
@@ -905,24 +933,10 @@ def api_login_collect():
     except TimeoutError as exc:
         return jsonify(ok=False, error=f"读取窗口登录状态超时：{exc}"), 504
     if not cookies:
-        # 窗口里没读到（CDP 偶尔会卡住）。这时只要本地存着的登录态还有效，
-        # 就不该算失败——用户要的是「能拉列表」，不是「必须读到窗口」。
-        try:
-            from api.cookies import use_cookies
-
-            saved = use_cookies()
-        except Exception:
-            saved = {}
-        if saved:
-            try:
-                state = _run_with_deadline(lambda: _probe_login(saved), 25)
-            except Exception:
-                state = {"status": False}
-            if state.get("status"):
-                return jsonify(
-                    ok=True,
-                    message="窗口里没读到新的登录态，但本地保存的登录态仍然有效，可以直接拉取")
-        return jsonify(ok=False, error="没读到登录信息，请先在窗口里登录再点一次"), 400
+        # 不能沿用旧登录态：那样会出现「界面看着是 B，跑起来用的是 A」。
+        # 读不到就让用户重来，宁可多一次点击，也不要串号。
+        return jsonify(ok=False,
+                       error="没读到窗口里的登录信息，请确认窗口里已登录成功后再点一次"), 400
     if not (cookies.get("_uid") or cookies.get("UID")):
         return jsonify(ok=False,
                        error="看起来还没登录成功：窗口里看不到登录后的标识"), 400
@@ -971,11 +985,29 @@ def api_login_collect():
                        error=f"登录状态用不了：{state.get('msg')}"), 400
 
     _append_log("已读取学习通登录状态", kind="ui")
+    # 记下这份登录态属于谁：换账号或跑任务前用它核对，避免 A 的登录态跑 B 的活
+    who: dict = {}
+    try:
+        who = _run_with_deadline(_whoami, 60)
+    except Exception as exc:
+        _append_log(f"查询登录账号失败：{exc}", kind="ui")
+    if who.get("ok"):
+        try:
+            (ROOT / "login.json").write_text(
+                json.dumps({"uid": who.get("uid", ""), "name": who.get("name", ""),
+                            "at": time.time()}, ensure_ascii=False),
+                encoding="utf-8")
+        except OSError:
+            pass
     # 登录完了就把窗口收起来，别挡着页面
     try:
         exam_embed.get("exam").set_active(False)
     except Exception:
         pass
+    name = str(who.get("name") or "")
+    if name:
+        return jsonify(ok=True,
+                       message=f"已登录：{name}。现在可以拉取考试、开始刷课了")
     return jsonify(ok=True, message="登录状态已保存，现在可以拉取考试、开始刷课了")
 
 
@@ -1337,6 +1369,25 @@ def api_start():
     err = _validate(cfg)
     if err:
         return jsonify(ok=False, error=err), 400
+
+    # 跑任务前核对登录的账号有没有变：出现过「登录的是 A、跑起来是 B」，
+    # 根因是换账号时旧 cookie 没清。这里再做一道保险。
+    try:
+        saved_login = json.loads((ROOT / "login.json").read_text(encoding="utf-8"))
+        saved_uid = str(saved_login.get("uid") or "")
+    except Exception:
+        saved_uid = ""
+    if saved_uid:
+        try:
+            who = _run_with_deadline(_whoami, 60)
+        except Exception:
+            who = {}
+        now_uid = str(who.get("uid") or "")
+        if now_uid and now_uid != saved_uid:
+            return jsonify(
+                ok=False,
+                error=f"当前登录的账号已经不是「{saved_login.get('name') or '刚登录的那个'}」了，"
+                      f"请重新点「我已登录，读取状态」再开始"), 409
     _save_secret(cfg.get("password", ""), cfg.get("api_key", ""),
                  cfg.get("search_key"), cfg.get("agent_key"))
     _write_config(cfg)

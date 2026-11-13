@@ -401,15 +401,16 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    if "--exam-list" in sys.argv:
-        # 子进程模式：在干净进程里读考试列表，结果写到指定文件带回去
-        # （打包版是窗口程序，没有 stdout 可用）
-        index = sys.argv.index("--exam-list")
+    if "--exam-list" in sys.argv or "--whoami" in sys.argv:
+        # 子进程模式：在干净进程里读考试列表 / 查当前登录的是谁，
+        # 结果写到指定文件带回去（打包版是窗口程序，没有 stdout 可用）
+        flag = "--whoami" if "--whoami" in sys.argv else "--exam-list"
+        index = sys.argv.index(flag)
         out_path = sys.argv[index + 1] if len(sys.argv) > index + 1 else ""
         try:
             from api.exam_list import main as exam_list_main
 
-            sys.exit(exam_list_main(out_path))
+            sys.exit(exam_list_main(out_path, "whoami" if flag == "--whoami" else "exams"))
         except Exception as exc:
             import json as _json
 

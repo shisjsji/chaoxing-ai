@@ -48,9 +48,32 @@ def build() -> dict:
             "total": sum(len(c["items"]) for c in result)}
 
 
-def main(out_path: str = "") -> int:
+def whoami() -> dict:
+    """当前这份登录态属于谁。换账号之后用它核对，别让 A 的登录态跑 B 的任务。"""
+    from api.answer import DummyTiku
+    from api.base import Account, Chaoxing, SessionManager
+
+    chaoxing = Chaoxing(account=Account("", ""), tiku=DummyTiku(), query_delay=0,
+                        work_max_retries=0, work_redo_enabled=False)
+    state = chaoxing.login(login_with_cookies=True)
+    if not state.get("status"):
+        return {"ok": False, "error": str(state.get("msg") or "登录态不可用")}
+    uid = ""
     try:
-        payload = build()
+        uid = SessionManager.get_session().cookies.get("_uid") or ""
+    except Exception:
+        pass
+    name = ""
+    try:
+        name = chaoxing.get_name() or ""
+    except Exception:
+        pass
+    return {"ok": True, "uid": str(uid), "name": str(name)}
+
+
+def main(out_path: str = "", mode: str = "exams") -> int:
+    try:
+        payload = whoami() if mode == "whoami" else build()
     except Exception as exc:
         payload = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     text = json.dumps(payload, ensure_ascii=False)
