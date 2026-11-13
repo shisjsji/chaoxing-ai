@@ -60,8 +60,9 @@ function switchPage(page) {
     if (page === 'library') loadLibrary();
     if (page === 'agent') loadAgent();
     if (page === 'exams') {
-      // 不在这里自动拉列表：进页面时登录窗口可能正在加载，两个请求撞一起
-      // 会互相拖住（表现为「正在读取」一直不动）。点刷新或登录完成后再拉。
+      // 拉列表走子进程，不会卡住主进程，所以进页面就自动拉一次
+      if (!examCourses.length) loadExams();
+      refreshWho();
       refreshExamCloseBtn();
     }
   };

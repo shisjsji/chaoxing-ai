@@ -199,35 +199,86 @@ $('feedback-send').onclick = async () => {
   }
 };
 
-$('btnExamRefresh').onclick = loadExams;
+$('btnExamRefresh').onclick = () => actWithFeedback('btnExamRefresh', loadExams);
 
-/* 登录：程序只负责开窗口，账号密码和验证码都由用户自己来 */
-$('btnLoginOpen').onclick = async () => {
-  flashIcon('btnLoginOpen', 'loader', 0);
+/* 登录只有一个按钮，按状态变形：
+   未登录 →「登录学习通」（打开窗口）→「我已完成登录」→ 登录后变「切换账号」。 */
+let loginPhase = 'out';   // out | opened | in
+
+function paintLoginButton() {
+  const btn = $('btnLogin');
+  if (!btn) return;
+  if (loginPhase === 'opened') {
+    setBtnText(btn, '我已完成登录');
+    btn.classList.add('primary');
+  } else if (loginPhase === 'in') {
+    setBtnText(btn, '切换账号');
+    btn.classList.remove('primary');
+  } else {
+    setBtnText(btn, '登录学习通');
+    btn.classList.add('primary');
+  }
+}
+
+function setWho(text, ok) {
+  const el = $('exam-who');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('ok', !!ok);
+}
+
+async function refreshWho() {
+  try {
+    const r = await fetch('/api/login/who');
+    const d = await r.json();
+    if (d.ok && d.name) {
+      loginPhase = 'in';
+      setWho('已登录 · ' + d.name, true);
+    } else if (d.ok && d.uid) {
+      loginPhase = 'in';
+      setWho('已登录', true);
+    } else {
+      loginPhase = 'out';
+      setWho('未登录', false);
+    }
+  } catch (e) {
+    loginPhase = 'out';
+    setWho('未登录', false);
+  }
+  const tip = $('login-hint');
+  if (tip) tip.hidden = loginPhase === 'in';
+  paintLoginButton();
+}
+
+$('btnLogin').onclick = async () => {
+  const btn = $('btnLogin');
+  if (loginPhase === 'opened') {
+    flashIcon(btn, 'loader', 0);
+    $('login-hint').textContent = '正在读取窗口里的登录状态…';
+    try {
+      const r = await post('/api/login/collect', {});
+      $('login-hint').textContent = r.message || '登录状态已保存';
+      flashIcon(btn, 'success');
+      await refreshWho();
+      await loadExams();
+    } catch (e) {
+      $('login-hint').textContent = '读取登录状态失败：' + e.message;
+      flashIcon(btn, 'failed');
+    }
+    return;
+  }
+
+  flashIcon(btn, 'loader', 0);
   try {
     const r = await post('/api/login/open', {});
+    loginPhase = 'opened';
+    paintLoginButton();
     $('login-hint').textContent = r.message
-      || '在下方窗口里完成登录，然后点「我已登录，读取状态」';
-    flashIcon('btnLoginOpen', 'success');
-    setMsg('登录窗口已打开，请在下方完成登录', 'ok');
+      || '在下方窗口里登录，完成后点「我已完成登录」';
+    flashIcon(btn, 'success');
   } catch (e) {
     $('login-hint').textContent = '打不开登录页：' + e.message;
-    flashIcon('btnLoginOpen', 'failed');
-  }
-};
-
-$('btnLoginDone').onclick = async () => {
-  flashIcon('btnLoginDone', 'loader', 0);
-  $('login-hint').textContent = '正在读取窗口里的登录状态…';
-  try {
-    const r = await post('/api/login/collect', {});
-    $('login-hint').textContent = r.message || '登录状态已保存';
-    flashIcon('btnLoginDone', 'success');
-    setMsg(r.message || '登录状态已保存', 'ok');
-    await loadExams();
-  } catch (e) {
-    $('login-hint').textContent = '读取登录状态失败：' + e.message;
-    flashIcon('btnLoginDone', 'failed');
+    flashIcon(btn, 'failed');
   }
 };
 

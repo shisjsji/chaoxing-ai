@@ -22,7 +22,7 @@ import requests
 
 from api.logger import logger
 
-APP_VERSION = "3.8.8"
+APP_VERSION = "3.8.9"
 APP_NAME = "超星AI答题"
 
 CHECK_TIMEOUT = 8
@@ -48,6 +48,12 @@ PS1_PATH = os.path.join(tempfile.gettempdir(), "chaoxing_update.ps1")
 # 内置更新日志：断网时也能在界面里看到本版改了什么。
 # 新增版本时同步更新 CHANGELOG.md 与服务端 version.json 的 highlights。
 RELEASES = {
+    "3.8.9": [
+        "考试页收成一行：登录/已登录/切换账号合并成一个按钮，按状态变形",
+        "顶部长了一个身份标签，直接显示现在登的是谁",
+        "「刷新考试列表」缩成「刷新」，进考试页自动拉一次，不用每次手动点",
+        "「打开其他页面」的输入框收进折叠区，不再占一整行",
+    ],
     "3.8.8": [
         "修「登录的是 A，跑起来却是 B」：换账号时旧 cookie 从没清过，浏览器里那份也在用旧的",
         "现在点「登录学习通」会先清干净本地和浏览器两处登录态，再打开登录页",

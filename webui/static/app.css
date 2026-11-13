@@ -549,3 +549,16 @@
     .app.nologs .logs{transform:translateX(100%);box-shadow:none}
     .grid3{grid-template-columns:1fr}
   }
+
+
+/* ---------- 考试页顶部：一行放完，主次分明 ---------- */
+.exam-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 6px}
+.exam-bar .hint{margin:0;flex:1 1 auto;text-align:right}
+.who{font-size:12px;color:var(--c-ink3);border:1px solid var(--c-line);
+  border-radius:7px;padding:3px 8px;white-space:nowrap;max-width:220px;
+  overflow:hidden;text-overflow:ellipsis}
+.who.ok{color:var(--c-ink2);border-color:var(--c-line)}
+.btn.quiet{background:transparent;border-color:transparent;color:var(--c-ink3);box-shadow:none}
+.btn.quiet:hover{background:var(--c-panel2,rgba(0,0,0,.04));color:var(--c-ink2)}
+#open-other{margin-top:12px}
+#open-other summary{cursor:pointer}

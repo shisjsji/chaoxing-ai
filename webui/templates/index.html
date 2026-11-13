@@ -104,24 +104,16 @@
       <!-- 考试 -->
       <section class="page" id="page-exams">
         <h1 class="page-title">考试</h1>
-        <p class="page-sub">先查题库，未命中再问模型；主观题会生成参考答案但不自动提交。需要验证码的考试，请先在平台上点开考试，再回来点「接管」。</p>
+        <p class="page-sub">先查题库，未命中再问模型；主观题只生成参考答案，不自动提交。</p>
 
-        <div class="row" style="margin-bottom:10px">
-          <button class="btn" id="btnExamRefresh"><span class="ni" data-icon="Refresh"></span>刷新考试列表</button>
-          <button class="btn" id="btnExamClose" hidden><span class="ni" data-icon="Close"></span>关闭考场页面</button>
-          <span class="hint" id="exam-hint" style="margin:0"></span>
+        <div class="exam-bar">
+          <span class="who" id="exam-who">未登录</span>
+          <button class="btn primary" id="btnLogin"><span class="ni" data-icon="Key"></span><span class="btn-label">登录学习通</span></button>
+          <button class="btn quiet" id="btnExamRefresh"><span class="ni" data-icon="Refresh"></span>刷新</button>
+          <button class="btn quiet" id="btnExamClose" hidden><span class="ni" data-icon="Close"></span>关闭考场</button>
+          <span class="hint" id="exam-hint"></span>
         </div>
-
-        <div class="row" style="margin-bottom:10px">
-          <button class="btn primary" id="btnLoginOpen"><span class="ni" data-icon="Key"></span>登录学习通</button>
-          <button class="btn" id="btnLoginDone"><span class="ni" data-icon="Check"></span>我已登录，读取状态</button>
-          <span class="hint" id="login-hint" style="margin:0">在下方窗口里自己输账号密码、完成验证，登录成功后点右边按钮</span>
-        </div>
-
-        <div class="row" style="margin-bottom:10px">
-          <input class="input" id="open-url" placeholder="在下方浏览器里打开其他页面（资料等），粘贴链接后点打开" style="flex:1">
-          <button class="btn" id="btnOpenUrl"><span class="ni" data-icon="ArrowUpRight"></span>打开</button>
-        </div>
+        <p class="hint" id="login-hint" style="margin:-4px 0 10px">登录在下方窗口里完成，账号密码和验证码都由你自己来</p>
 
         <div class="notice" id="face-card" hidden>
           <b>这场考试需要人脸验证</b>
@@ -139,6 +131,16 @@
               不用在两个窗口之间来回切。</span>
           </div>
         </div>
+
+        <details class="block" id="open-other">
+          <summary>打开其他页面</summary>
+          <div class="inner">
+            <div class="row" style="margin:0">
+              <input class="input" id="open-url" placeholder="粘贴课程或资料链接" style="flex:1">
+              <button class="btn" id="btnOpenUrl"><span class="ni" data-icon="ArrowUpRight"></span>打开</button>
+            </div>
+          </div>
+        </details>
       </section>
 
       <!-- 题库 -->

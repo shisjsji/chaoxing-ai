@@ -816,7 +816,10 @@ def _run_child(flag: str, tag: str, timeout: float) -> dict:
     if FROZEN:
         cmd = [sys.executable, flag, str(out_path)]
     else:
-        cmd = [str(PYTHON), str(ROOT / "desktop.py"), flag, str(out_path)]
+        # 源码运行时优先用项目自己的虚拟环境；没有就用当前解释器，
+        # 免得开发者机器上少了 .venv 就整条链路报「找不到文件」
+        python = str(PYTHON) if Path(PYTHON).exists() else sys.executable
+        cmd = [python, str(ROOT / "desktop.py"), flag, str(out_path)]
     subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True,
                    encoding="utf-8", errors="replace", env=env, timeout=timeout)
     if not out_path.exists():
@@ -917,6 +920,27 @@ def _probe_login(cookies: dict) -> dict:
     if resp.status_code != 200:
         return {"status": False, "msg": f"平台返回 {resp.status_code}"}
     return {"status": True, "msg": "登录成功"}
+
+
+@app.get("/api/login/who")
+def api_login_who():
+    """当前登录的是谁。读 login.json，够快，不进子进程。"""
+    try:
+        data = json.loads((ROOT / "login.json").read_text(encoding="utf-8"))
+        if data.get("uid") or data.get("name"):
+            return jsonify(ok=True, uid=str(data.get("uid") or ""),
+                           name=str(data.get("name") or ""))
+    except Exception:
+        pass
+    try:
+        from api.cookies import use_cookies
+
+        saved = use_cookies()
+        if saved.get("_uid"):
+            return jsonify(ok=True, uid=str(saved.get("_uid")), name="")
+    except Exception:
+        pass
+    return jsonify(ok=False)
 
 
 @app.post("/api/login/collect")
